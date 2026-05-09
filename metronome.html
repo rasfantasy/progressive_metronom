@@ -239,6 +239,7 @@
     .slider-row { display: flex; align-items: center; gap: 14px; }
     .slider-row .slider { flex: 1; }
     .slider-min-max { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+    .measures-hint { color: var(--accent); font-weight: 600; }
 
     /* Сегменты (выбор) */
     .segments {
@@ -426,11 +427,11 @@
 
         <div class="slider-group">
             <div class="slider-header">
-                <div class="slider-name"><span class="tag">C</span>Длительность партии<span class="desc"> — минут</span></div>
-                <input type="number" class="number-input" id="inputC" min="0.5" max="30" value="2" step="0.5" />
+                <div class="slider-name"><span class="tag">C</span>Размер партии<span class="desc"> — ударов до ускорения</span></div>
+                <input type="number" class="number-input" id="inputC" min="4" max="1024" value="120" step="4" />
             </div>
-            <div class="slider-row"><input type="range" class="slider" id="sliderC" min="0.5" max="30" value="2" step="0.5" /></div>
-            <div class="slider-min-max"><span>0,5 мин</span><span>30 мин</span></div>
+            <div class="slider-row"><input type="range" class="slider" id="sliderC" min="4" max="1024" value="120" step="4" /></div>
+            <div class="slider-min-max"><span>4 уд.</span><span id="measuresHint" class="measures-hint">≈ 30 тактов (120 уд.)</span><span>1024 уд.</span></div>
         </div>
     </section>
 
@@ -509,14 +510,15 @@
         currentBpm: 60,
         bpmA: 60,
         stepB: 5,
-        durationC: 2, // мин
+        beatsC: 120, // ударов в партии (округляется вверх до целого такта)
         meter: 4, // 1 = без акцента
         timbre: 'click',
         volume: 0.8,
         countdownEnabled: false,
-        partyStartTime: 0,
         nextBeatTime: 0,
-        beatCount: 0, // глобальный счётчик ударов
+        beatCount: 0, // глобальный счётчик ударов с момента старта
+        beatCountInParty: 0, // счётчик в текущей партии (сбрасывается при ускорении)
+        beatInMeasure: 0, // текущая доля внутри такта
         timerId: null,
         lookahead: 25,
         scheduleAheadTime: 0.1,
@@ -526,13 +528,13 @@
         countdownTimers: [],
     };
 
-    const STORAGE_KEY = 'metronome_presets_v2';
-    const SETTINGS_KEY = 'metronome_settings_v2';
+    const STORAGE_KEY = 'metronome_presets_v3';
+    const SETTINGS_KEY = 'metronome_settings_v3';
 
     const BUILTIN_PRESETS = [
-        { id: 'builtin-1', name: 'Новичок 60→120', a: 60, b: 5, c: 2, meter: 4, timbre: 'click', volume: 0.8, builtin: true },
-        { id: 'builtin-2', name: 'Скорость 80→160', a: 80, b: 8, c: 1, meter: 4, timbre: 'woodblock', volume: 0.8, builtin: true },
-        { id: 'builtin-3', name: 'Разогрев 40→100', a: 40, b: 3, c: 3, meter: 3, timbre: 'tap', volume: 0.7, builtin: true },
+        { id: 'builtin-1', name: 'Новичок 60→120', a: 60, b: 5, c: 120, meter: 4, timbre: 'click', volume: 0.8, builtin: true },
+        { id: 'builtin-2', name: 'Скорость 80→160', a: 80, b: 8, c: 64, meter: 4, timbre: 'woodblock', volume: 0.8, builtin: true },
+        { id: 'builtin-3', name: 'Разогрев 40→100', a: 40, b: 3, c: 96, meter: 3, timbre: 'tap', volume: 0.7, builtin: true },
     ];
 
     // === DOM ===
@@ -558,6 +560,7 @@
         presetsList: $('presetsList'),
         presetName: $('presetName'),
         savePresetBtn: $('savePresetBtn'),
+        measuresHint: $('measuresHint'),
     };
 
     // === Утилиты ===
@@ -600,8 +603,9 @@
     });
     syncPair(els.sliderB, els.inputB, (v) => { state.stepB = v; updateNextBpmDisplay(); });
     syncPair(els.sliderC, els.inputC, (v) => {
-        state.durationC = v;
-        if (!state.running) els.timeLeft.textContent = formatTime(v * 60);
+        state.beatsC = v;
+        updateMeasuresHint();
+        if (!state.running) els.timeLeft.textContent = effectiveBeatsC() + ' уд.';
     });
 
     // Громкость
@@ -624,8 +628,34 @@
         btn.classList.add('active');
         state.meter = +btn.dataset.meter;
         renderBeatsIndicator();
+        updateMeasuresHint();
+        if (!state.running) els.timeLeft.textContent = effectiveBeatsC() + ' уд.';
         saveSettings();
     });
+
+    // Эффективное число ударов в партии — округляется ВВЕРХ до целого такта
+    function effectiveBeatsC() {
+        const m = state.meter > 1 ? state.meter : 1;
+        return Math.max(m, Math.ceil(state.beatsC / m) * m);
+    }
+
+    function updateMeasuresHint() {
+        const eff = effectiveBeatsC();
+        const measures = state.meter > 1 ? Math.round(eff / state.meter) : null;
+        if (measures !== null) {
+            els.measuresHint.textContent = `≈ ${measures} ${measureWord(measures)} (${eff} уд.)`;
+            els.measuresHint.style.display = '';
+        } else {
+            els.measuresHint.textContent = `${eff} ударов`;
+            els.measuresHint.style.display = '';
+        }
+    }
+    function measureWord(n) {
+        const mod10 = n % 10, mod100 = n % 100;
+        if (mod10 === 1 && mod100 !== 11) return 'такт';
+        if ([2,3,4].includes(mod10) && ![12,13,14].includes(mod100)) return 'такта';
+        return 'тактов';
+    }
 
     // Тембр
     els.timbreSegments.addEventListener('click', (e) => {
@@ -764,13 +794,29 @@
         if (!state.running) return;
         const ctx = state.audioCtx;
         while (state.nextBeatTime < ctx.currentTime + state.scheduleAheadTime) {
-            const beatInMeasure = state.meter > 1 ? (state.beatCount % state.meter) : -1;
+            // Перед планированием очередного удара проверяем — не пора ли поднять темп.
+            // Условие: уже сыграно >= effectiveBeatsC ударов И мы стоим на границе такта (1-я доля),
+            // либо размер 1 (без акцента).
+            const eff = effectiveBeatsC();
+            const onMeasureBoundary = state.meter <= 1 || (state.beatCountInParty % state.meter === 0);
+            if (state.beatCountInParty >= eff && onMeasureBoundary) {
+                const next = clamp(state.currentBpm + state.stepB, 20, 300);
+                state.currentBpm = next;
+                els.bpmDisplay.textContent = next;
+                state.beatCountInParty = 0;
+                state.beatInMeasure = 0;
+                updateNextBpmDisplay();
+            }
+
+            const beatInMeasure = state.meter > 1 ? state.beatInMeasure : -1;
             const isAccent = state.meter > 1 && beatInMeasure === 0;
             scheduleSound(state.nextBeatTime, isAccent);
             scheduleVisualBeat(state.nextBeatTime, isAccent, beatInMeasure);
             const sec = 60.0 / state.currentBpm;
             state.nextBeatTime += sec;
             state.beatCount++;
+            state.beatCountInParty++;
+            if (state.meter > 1) state.beatInMeasure = (state.beatInMeasure + 1) % state.meter;
         }
     }
 
@@ -807,23 +853,15 @@
         if (beatInMeasure >= 0) highlightBeat(beatInMeasure);
     }
 
-    // === Прогресс и переход партий ===
+    // === Прогресс по ударам ===
     function updateProgress() {
-        const ctx = state.audioCtx;
-        const elapsed = ctx.currentTime - state.partyStartTime;
-        const total = state.durationC * 60;
-        const ratio = clamp(elapsed / total, 0, 1);
+        const eff = effectiveBeatsC();
+        const done = clamp(state.beatCountInParty, 0, eff);
+        const ratio = eff > 0 ? done / eff : 0;
         els.progressFill.style.width = (ratio * 100) + '%';
         els.progressPercent.textContent = Math.floor(ratio * 100) + '%';
-        els.timeLeft.textContent = formatTime(total - elapsed);
-
-        if (elapsed >= total) {
-            const next = clamp(state.currentBpm + state.stepB, 20, 300);
-            state.currentBpm = next;
-            els.bpmDisplay.textContent = next;
-            state.partyStartTime = ctx.currentTime;
-            updateNextBpmDisplay();
-        }
+        const remaining = Math.max(0, eff - done);
+        els.timeLeft.textContent = remaining + ' уд.';
     }
 
     // === Голосовой отсчёт ===
@@ -889,9 +927,10 @@
     function startMetronome() {
         const ctx = state.audioCtx;
         state.beatCount = 0;
+        state.beatCountInParty = 0;
+        state.beatInMeasure = 0;
         state.currentBpm = state.bpmA;
         els.bpmDisplay.textContent = state.currentBpm;
-        state.partyStartTime = ctx.currentTime;
         state.nextBeatTime = ctx.currentTime + 0.05;
         state.running = true;
         state.timerId = setInterval(scheduler, state.lookahead);
@@ -903,27 +942,23 @@
     function start() {
         if (state.running || state.countdownActive) return;
         ensureAudio();
-        // Если пауза с продолжением — без отсчёта
-        if (state.beatCount > 0 || !state.countdownEnabled) {
-            // Возобновление после паузы
+        // Возобновление после паузы (счётчик ударов сохранён) — без отсчёта
+        if (state.beatCount > 0) {
             const ctx = state.audioCtx;
-            if (state.beatCount > 0) {
-                state.nextBeatTime = ctx.currentTime + 0.05;
-                state.partyStartTime = ctx.currentTime - (state.partyStartTime ? (ctx.currentTime - state.partyStartTime) : 0);
-                // Точнее: возобновим прогресс с того места, где остановились — для простоты сбросим партию
-                state.partyStartTime = ctx.currentTime;
-                state.running = true;
-                state.timerId = setInterval(scheduler, state.lookahead);
-                els.startBtn.textContent = 'Пауза';
-                els.stopBtn.classList.add('active');
-                updateNextBpmDisplay();
-            } else {
-                startMetronome();
-            }
+            state.nextBeatTime = ctx.currentTime + 0.05;
+            state.running = true;
+            state.timerId = setInterval(scheduler, state.lookahead);
+            els.startBtn.textContent = 'Пауза';
+            els.stopBtn.classList.add('active');
+            updateNextBpmDisplay();
             return;
         }
-        // С отсчётом
-        runCountdown(() => startMetronome());
+        // Первый старт — с отсчётом, если включён
+        if (state.countdownEnabled) {
+            runCountdown(() => startMetronome());
+        } else {
+            startMetronome();
+        }
     }
 
     function pause() {
@@ -940,13 +975,14 @@
     function reset() {
         pause();
         state.beatCount = 0;
+        state.beatCountInParty = 0;
+        state.beatInMeasure = 0;
         state.currentBpm = state.bpmA;
         els.bpmDisplay.textContent = state.bpmA;
         els.progressFill.style.width = '0%';
         els.progressPercent.textContent = '0%';
-        els.timeLeft.textContent = formatTime(state.durationC * 60);
+        els.timeLeft.textContent = effectiveBeatsC() + ' уд.';
         beatQueue = [];
-        // Сброс индикатора
         els.beatsIndicator.querySelectorAll('.beat-dot').forEach(d => d.classList.remove('active'));
         updateNextBpmDisplay();
     }
@@ -993,7 +1029,7 @@
             item.innerHTML = `
                 <div class="preset-info">
                     <div class="preset-name">${escapeHtml(p.name)}</div>
-                    <div class="preset-meta">A=${p.a} · B=${p.b} · C=${p.c} мин · ${meterTxt} · ${timbreTxt}</div>
+                    <div class="preset-meta">A=${p.a} · B=${p.b} · C=${p.c} уд. · ${meterTxt} · ${timbreTxt}</div>
                 </div>
                 <div class="preset-actions"></div>
             `;
@@ -1031,7 +1067,7 @@
         els.sliderA.value = els.inputA.value = p.a;
         els.sliderB.value = els.inputB.value = p.b;
         els.sliderC.value = els.inputC.value = p.c;
-        state.bpmA = p.a; state.stepB = p.b; state.durationC = p.c;
+        state.bpmA = p.a; state.stepB = p.b; state.beatsC = p.c;
         updateSliderFill(els.sliderA);
         updateSliderFill(els.sliderB);
         updateSliderFill(els.sliderC);
@@ -1072,7 +1108,7 @@
         const list = loadUserPresets();
         list.push({
             id: 'u-' + Date.now(),
-            name, a: state.bpmA, b: state.stepB, c: state.durationC,
+            name, a: state.bpmA, b: state.stepB, c: state.beatsC,
             meter: state.meter, timbre: state.timbre, volume: state.volume,
         });
         saveUserPresets(list);
@@ -1087,7 +1123,7 @@
     function saveSettings() {
         try {
             localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-                a: state.bpmA, b: state.stepB, c: state.durationC,
+                a: state.bpmA, b: state.stepB, c: state.beatsC,
                 meter: state.meter, timbre: state.timbre, volume: state.volume,
                 countdown: state.countdownEnabled,
             }));
@@ -1100,7 +1136,7 @@
             const s = JSON.parse(raw);
             if (s.a) { state.bpmA = s.a; els.sliderA.value = els.inputA.value = s.a; updateSliderFill(els.sliderA); }
             if (s.b) { state.stepB = s.b; els.sliderB.value = els.inputB.value = s.b; updateSliderFill(els.sliderB); }
-            if (s.c) { state.durationC = s.c; els.sliderC.value = els.inputC.value = s.c; updateSliderFill(els.sliderC); }
+            if (s.c) { state.beatsC = s.c; els.sliderC.value = els.inputC.value = s.c; updateSliderFill(els.sliderC); }
             if (s.meter) {
                 state.meter = s.meter;
                 els.meterSegments.querySelectorAll('.segment').forEach(seg => {
@@ -1130,7 +1166,8 @@
     loadSettings();
     state.currentBpm = state.bpmA;
     els.bpmDisplay.textContent = state.bpmA;
-    els.timeLeft.textContent = formatTime(state.durationC * 60);
+    updateMeasuresHint();
+    els.timeLeft.textContent = effectiveBeatsC() + ' уд.';
     updateNextBpmDisplay();
     renderBeatsIndicator();
     renderPresets();
