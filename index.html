@@ -2,8 +2,22 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#0a0a18" />
+<meta name="description" content="Прогрессивный метроном для гитары: автоматический разгон темпа, работает офлайн." />
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon.png" />
+<link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png" />
+
+<!-- iOS Safari standalone -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Метроном" />
+
 <title>Прогрессивный метроном для гитары</title>
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -38,7 +52,7 @@
             linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 50%, var(--bg-3) 100%);
         background-attachment: fixed;
         min-height: 100vh;
-        padding: 24px 16px 40px;
+        padding: max(24px, env(safe-area-inset-top)) 16px max(40px, env(safe-area-inset-bottom));
         display: flex; flex-direction: column; align-items: center;
     }
 
@@ -53,7 +67,7 @@
     }
 
     .container { position: relative; z-index: 1; width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 20px; }
-    header { text-align: center; }
+    header { text-align: center; position: relative; }
     header h1 {
         font-size: clamp(18px, 4vw, 24px);
         font-weight: 700;
@@ -62,6 +76,38 @@
         -webkit-background-clip: text; background-clip: text; color: transparent;
     }
     header p { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+
+    /* Кнопка установки PWA */
+    .install-btn {
+        position: absolute; top: 0; right: 0;
+        padding: 8px 14px; border: 1px solid var(--accent);
+        background: rgba(0,229,255,0.1); color: var(--accent);
+        border-radius: 99px; font-size: 12px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 1px; cursor: pointer;
+        font-family: inherit; transition: background 0.2s ease, transform 0.15s ease;
+        display: none;
+    }
+    .install-btn.visible { display: inline-flex; align-items: center; gap: 6px; }
+    .install-btn:hover { background: rgba(0,229,255,0.2); }
+    .install-btn:active { transform: scale(0.97); }
+    .install-btn::before { content: '⬇'; font-size: 14px; }
+
+    /* Тост обновления */
+    .update-toast {
+        position: fixed; bottom: max(16px, env(safe-area-inset-bottom));
+        left: 50%; transform: translateX(-50%);
+        background: var(--bg-2); border: 1px solid var(--accent);
+        color: var(--text); padding: 12px 18px; border-radius: 14px;
+        box-shadow: 0 8px 24px rgba(0,229,255,0.3);
+        display: none; z-index: 100;
+        font-size: 13px; align-items: center; gap: 12px;
+    }
+    .update-toast.visible { display: flex; }
+    .update-toast button {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #0a0a18; border: none; padding: 6px 14px; border-radius: 8px;
+        font-weight: 700; cursor: pointer; font-family: inherit;
+    }
 
     .glass {
         background: var(--glass-bg);
@@ -136,17 +182,8 @@
     }
     .countdown-overlay.active { display: flex; }
 
-    /* Точки долей такта */
-    .beats-indicator {
-        display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
-        max-width: 460px;
-    }
-    .beat-dot {
-        width: 14px; height: 14px; border-radius: 50%;
-        background: rgba(255,255,255,0.12);
-        border: 1px solid rgba(255,255,255,0.2);
-        transition: all 0.12s ease;
-    }
+    .beats-indicator { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 460px; }
+    .beat-dot { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2); transition: all 0.12s ease; }
     .beat-dot.active { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 12px rgba(0,229,255,0.6); transform: scale(1.25); }
     .beat-dot.first { width: 18px; height: 18px; }
     .beat-dot.first.active { background: var(--accent-warm); border-color: var(--accent-warm); box-shadow: 0 0 16px rgba(255,185,90,0.7); }
@@ -163,30 +200,14 @@
     .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3)); border-radius: 99px; width: 0%; transition: width 0.2s linear; box-shadow: 0 0 10px rgba(0,229,255,0.4); }
 
     .controls { display: flex; gap: 12px; width: 100%; max-width: 460px; }
-    .btn {
-        flex: 1; padding: 16px 20px; font-size: 16px; font-weight: 700;
-        text-transform: uppercase; letter-spacing: 1.5px;
-        border: 1px solid var(--glass-border); border-radius: 16px;
-        background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer;
-        transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
-        font-family: inherit;
-    }
+    .btn { flex: 1; padding: 16px 20px; font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; border: 1px solid var(--glass-border); border-radius: 16px; background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer; transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease; font-family: inherit; }
     .btn:hover { background: rgba(255,255,255,0.1); }
     .btn:active { transform: scale(0.97); }
-    .btn-primary {
-        background: linear-gradient(135deg, var(--accent), var(--accent-2));
-        color: #0a0a18; border-color: transparent;
-        box-shadow: 0 4px 20px rgba(0,229,255,0.35);
-    }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0a0a18; border-color: transparent; box-shadow: 0 4px 20px rgba(0,229,255,0.35); }
     .btn-primary:hover { box-shadow: 0 6px 28px rgba(0,229,255,0.5); background: linear-gradient(135deg, var(--accent-2), var(--accent)); }
-    .btn-danger.active {
-        background: linear-gradient(135deg, var(--accent-3), #ff8e53);
-        color: #0a0a18; border-color: transparent;
-        box-shadow: 0 4px 20px rgba(255,77,141,0.35);
-    }
+    .btn-danger.active { background: linear-gradient(135deg, var(--accent-3), #ff8e53); color: #0a0a18; border-color: transparent; box-shadow: 0 4px 20px rgba(255,77,141,0.35); }
     .btn-sm { padding: 10px 12px; font-size: 12px; letter-spacing: 1px; }
 
-    /* === Настройки === */
     .panel { padding: 22px 22px 26px; }
     .panel-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 18px; text-align: center; }
 
@@ -194,139 +215,65 @@
     .slider-group:last-child { margin-bottom: 0; }
     .slider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap; }
     .slider-name { font-size: 14px; font-weight: 600; color: var(--text); }
-    .slider-name .tag {
-        display: inline-block; background: rgba(0,229,255,0.15); color: var(--accent);
-        font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; margin-right: 8px; font-family: monospace;
-    }
+    .slider-name .tag { display: inline-block; background: rgba(0,229,255,0.15); color: var(--accent); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; margin-right: 8px; font-family: monospace; }
     .slider-name .desc { color: var(--text-dim); font-weight: 400; font-size: 13px; }
 
-    .number-input {
-        width: 90px; padding: 8px 10px;
-        background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
-        border-radius: 10px; color: var(--text);
-        font-size: 15px; font-weight: 700; text-align: center;
-        font-family: inherit; font-variant-numeric: tabular-nums; outline: none;
-        transition: border-color 0.2s ease, background 0.2s ease;
-    }
+    .number-input { width: 90px; padding: 8px 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; color: var(--text); font-size: 15px; font-weight: 700; text-align: center; font-family: inherit; font-variant-numeric: tabular-nums; outline: none; transition: border-color 0.2s ease, background 0.2s ease; }
     .number-input:focus { border-color: var(--accent); background: rgba(0,229,255,0.08); }
     .number-input::-webkit-outer-spin-button, .number-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     .number-input[type=number] { -moz-appearance: textfield; }
 
-    .slider {
-        -webkit-appearance: none; appearance: none; width: 100%; height: 8px;
-        background: rgba(255,255,255,0.08); border-radius: 99px; outline: none; cursor: pointer; position: relative;
-    }
-    .slider::-webkit-slider-runnable-track {
-        height: 8px;
-        background: linear-gradient(90deg, var(--accent) 0%, var(--accent) var(--fill, 0%), rgba(255,255,255,0.08) var(--fill, 0%));
-        border-radius: 99px;
-    }
+    .slider { -webkit-appearance: none; appearance: none; width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 99px; outline: none; cursor: pointer; position: relative; }
+    .slider::-webkit-slider-runnable-track { height: 8px; background: linear-gradient(90deg, var(--accent) 0%, var(--accent) var(--fill, 0%), rgba(255,255,255,0.08) var(--fill, 0%)); border-radius: 99px; }
     .slider::-moz-range-track { height: 8px; background: rgba(255,255,255,0.08); border-radius: 99px; }
     .slider::-moz-range-progress { height: 8px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 99px; }
-    .slider::-webkit-slider-thumb {
-        -webkit-appearance: none; appearance: none;
-        width: 22px; height: 22px; margin-top: -7px;
-        border-radius: 50%; background: #ffffff; border: 3px solid var(--accent);
-        cursor: grab; box-shadow: 0 2px 10px rgba(0,229,255,0.45);
-        transition: transform 0.15s ease;
-    }
+    .slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin-top: -7px; border-radius: 50%; background: #ffffff; border: 3px solid var(--accent); cursor: grab; box-shadow: 0 2px 10px rgba(0,229,255,0.45); transition: transform 0.15s ease; }
     .slider::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.15); }
-    .slider::-moz-range-thumb {
-        width: 22px; height: 22px; border-radius: 50%; background: #ffffff;
-        border: 3px solid var(--accent); cursor: grab; box-shadow: 0 2px 10px rgba(0,229,255,0.45);
-    }
+    .slider::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #ffffff; border: 3px solid var(--accent); cursor: grab; box-shadow: 0 2px 10px rgba(0,229,255,0.45); }
     .slider:disabled { opacity: 0.5; cursor: not-allowed; }
     .slider-row { display: flex; align-items: center; gap: 14px; }
     .slider-row .slider { flex: 1; }
     .slider-min-max { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
     .measures-hint { color: var(--accent); font-weight: 600; }
 
-    /* Сегменты (выбор) */
-    .segments {
-        display: flex; gap: 6px; padding: 4px;
-        background: rgba(0,0,0,0.25);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px;
-        flex-wrap: wrap;
-    }
-    .segment {
-        flex: 1 1 auto; min-width: 48px; padding: 10px 12px;
-        background: transparent; border: none; color: var(--text-dim);
-        font-family: inherit; font-size: 13px; font-weight: 600;
-        border-radius: 10px; cursor: pointer; transition: all 0.18s ease;
-        text-align: center;
-    }
+    .segments { display: flex; gap: 6px; padding: 4px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; flex-wrap: wrap; }
+    .segment { flex: 1 1 auto; min-width: 48px; padding: 10px 12px; background: transparent; border: none; color: var(--text-dim); font-family: inherit; font-size: 13px; font-weight: 600; border-radius: 10px; cursor: pointer; transition: all 0.18s ease; text-align: center; }
     .segment:hover { color: var(--text); background: rgba(255,255,255,0.04); }
-    .segment.active {
-        background: linear-gradient(135deg, var(--accent), var(--accent-2));
-        color: #0a0a18; box-shadow: 0 2px 10px rgba(0,229,255,0.3);
-    }
+    .segment.active { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #0a0a18; box-shadow: 0 2px 10px rgba(0,229,255,0.3); }
 
-    .toggle {
-        position: relative; display: inline-flex; align-items: center; gap: 10px;
-        cursor: pointer; user-select: none;
-    }
+    .toggle { position: relative; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
     .toggle input { display: none; }
-    .toggle .track {
-        width: 44px; height: 24px; background: rgba(255,255,255,0.12);
-        border-radius: 99px; position: relative; transition: background 0.2s ease;
-    }
-    .toggle .track::after {
-        content: ''; position: absolute; top: 2px; left: 2px;
-        width: 20px; height: 20px; border-radius: 50%; background: #ffffff;
-        transition: transform 0.2s ease;
-    }
+    .toggle .track { width: 44px; height: 24px; background: rgba(255,255,255,0.12); border-radius: 99px; position: relative; transition: background 0.2s ease; }
+    .toggle .track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #ffffff; transition: transform 0.2s ease; }
     .toggle input:checked + .track { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
     .toggle input:checked + .track::after { transform: translateX(20px); }
 
-    /* Пресеты */
     .presets-list { display: flex; flex-direction: column; gap: 8px; }
-    .preset-item {
-        display: flex; align-items: center; gap: 10px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px; padding: 10px 12px;
-    }
+    .preset-item { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px 12px; }
     .preset-info { flex: 1; min-width: 0; }
     .preset-name { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .preset-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; font-variant-numeric: tabular-nums; }
     .preset-actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .preset-btn {
-        padding: 7px 12px; font-size: 12px; font-weight: 600;
-        background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 8px; color: var(--text); cursor: pointer; font-family: inherit;
-        transition: background 0.15s ease;
-    }
+    .preset-btn { padding: 7px 12px; font-size: 12px; font-weight: 600; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: var(--text); cursor: pointer; font-family: inherit; transition: background 0.15s ease; }
     .preset-btn:hover { background: rgba(255,255,255,0.12); }
     .preset-btn.load { color: var(--accent); }
     .preset-btn.delete { color: var(--accent-3); }
-    .preset-btn.builtin-tag {
-        background: rgba(255,185,90,0.12); color: var(--accent-warm);
-        border-color: rgba(255,185,90,0.25); cursor: default; font-size: 10px;
-        text-transform: uppercase; letter-spacing: 1px;
-    }
+    .preset-btn.builtin-tag { background: rgba(255,185,90,0.12); color: var(--accent-warm); border-color: rgba(255,185,90,0.25); cursor: default; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
     .preset-builtin .preset-name { color: var(--accent-warm); }
 
     .preset-save-row { display: flex; gap: 8px; margin-top: 14px; }
-    .preset-save-row input {
-        flex: 1; padding: 10px 12px;
-        background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
-        border-radius: 12px; color: var(--text); font-family: inherit; font-size: 14px;
-        outline: none;
-    }
+    .preset-save-row input { flex: 1; padding: 10px 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; color: var(--text); font-family: inherit; font-size: 14px; outline: none; }
     .preset-save-row input:focus { border-color: var(--accent); background: rgba(0,229,255,0.06); }
     .preset-save-row .btn { flex: 0 0 auto; padding: 10px 16px; font-size: 13px; }
 
     .empty-state { text-align: center; color: var(--text-dim); font-size: 13px; padding: 14px 8px; font-style: italic; }
 
     footer { margin-top: 6px; text-align: center; font-size: 12px; color: var(--text-dim); line-height: 1.6; }
-    footer .key {
-        background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
-        border-radius: 6px; padding: 1px 6px; font-family: monospace; color: var(--text); font-size: 11px;
-    }
+    footer .key { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 1px 6px; font-family: monospace; color: var(--text); font-size: 11px; }
+    footer .offline-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; font-size: 11px; margin-left: 6px; background: rgba(0,229,255,0.1); color: var(--accent); border: 1px solid rgba(0,229,255,0.3); }
 
     @media (max-width: 480px) {
-        body { padding: 16px 12px 32px; }
+        body { padding: max(16px, env(safe-area-inset-top)) 12px max(32px, env(safe-area-inset-bottom)); }
         .display-panel, .panel { padding: 22px 16px; }
         .pulse-stage { width: 200px; height: 200px; }
         .pulse-core { width: 150px; height: 150px; }
@@ -339,6 +286,7 @@
         .number-input { width: 80px; font-size: 14px; padding: 6px 8px; }
         .slider-name .desc { display: none; }
         .countdown-overlay { font-size: 90px; }
+        .install-btn { position: static; margin-top: 12px; }
     }
     @media (min-width: 768px) {
         .pulse-stage { width: 260px; height: 260px; }
@@ -359,9 +307,9 @@
     <header>
         <h1>Прогрессивный метроном</h1>
         <p>Тренировочный инструмент для гитары с автоматическим разгоном темпа</p>
+        <button class="install-btn" id="installBtn" type="button">Установить</button>
     </header>
 
-    <!-- Дисплей -->
     <section class="glass display-panel">
         <div class="pulse-stage">
             <div class="ring" id="ring1"></div>
@@ -403,7 +351,6 @@
         </div>
     </section>
 
-    <!-- Параметры разгона -->
     <section class="glass panel">
         <div class="panel-title">Темп и разгон</div>
 
@@ -435,7 +382,6 @@
         </div>
     </section>
 
-    <!-- Звук и такт -->
     <section class="glass panel">
         <div class="panel-title">Звук и такт</div>
 
@@ -484,7 +430,6 @@
         </div>
     </section>
 
-    <!-- Пресеты -->
     <section class="glass panel">
         <div class="panel-title">Пресеты</div>
         <div class="presets-list" id="presetsList"></div>
@@ -496,29 +441,35 @@
     </section>
 
     <footer>
-        Подсказка: <span class="key">Пробел</span> — старт/пауза. Все ваши пресеты хранятся локально в браузере.
+        <span class="key">Пробел</span> — старт/пауза. Пресеты хранятся в браузере.
+        <span class="offline-badge" id="offlineBadge" style="display:none;">● Готов к офлайн</span>
     </footer>
+</div>
+
+<!-- Тост обновления -->
+<div class="update-toast" id="updateToast">
+    Доступна новая версия
+    <button id="updateBtn" type="button">Обновить</button>
 </div>
 
 <script>
 (function () {
     'use strict';
 
-    // === Состояние ===
     const state = {
         running: false,
         currentBpm: 60,
         bpmA: 60,
         stepB: 5,
-        beatsC: 120, // ударов в партии (округляется вверх до целого такта)
-        meter: 4, // 1 = без акцента
+        beatsC: 120,
+        meter: 4,
         timbre: 'click',
         volume: 0.8,
         countdownEnabled: false,
         nextBeatTime: 0,
-        beatCount: 0, // глобальный счётчик ударов с момента старта
-        beatCountInParty: 0, // счётчик в текущей партии (сбрасывается при ускорении)
-        beatInMeasure: 0, // текущая доля внутри такта
+        beatCount: 0,
+        beatCountInParty: 0,
+        beatInMeasure: 0,
         timerId: null,
         lookahead: 25,
         scheduleAheadTime: 0.1,
@@ -537,46 +488,30 @@
         { id: 'builtin-3', name: 'Разогрев 40→100', a: 40, b: 3, c: 96, meter: 3, timbre: 'tap', volume: 0.7, builtin: true },
     ];
 
-    // === DOM ===
     const $ = (id) => document.getElementById(id);
     const els = {
-        bpmDisplay: $('bpmDisplay'),
-        nextBpm: $('nextBpm'),
-        timeLeft: $('timeLeft'),
-        progressFill: $('progressFill'),
-        progressPercent: $('progressPercent'),
-        pulseCore: $('pulseCore'),
-        ring1: $('ring1'), ring2: $('ring2'),
-        beatsIndicator: $('beatsIndicator'),
-        countdownOverlay: $('countdownOverlay'),
+        bpmDisplay: $('bpmDisplay'), nextBpm: $('nextBpm'), timeLeft: $('timeLeft'),
+        progressFill: $('progressFill'), progressPercent: $('progressPercent'),
+        pulseCore: $('pulseCore'), ring1: $('ring1'), ring2: $('ring2'),
+        beatsIndicator: $('beatsIndicator'), countdownOverlay: $('countdownOverlay'),
         startBtn: $('startBtn'), stopBtn: $('stopBtn'), resetBtn: $('resetBtn'),
         inputA: $('inputA'), inputB: $('inputB'), inputC: $('inputC'),
         sliderA: $('sliderA'), sliderB: $('sliderB'), sliderC: $('sliderC'),
-        meterSegments: $('meterSegments'),
-        timbreSegments: $('timbreSegments'),
-        sliderVolume: $('sliderVolume'),
-        volumeValue: $('volumeValue'),
+        meterSegments: $('meterSegments'), timbreSegments: $('timbreSegments'),
+        sliderVolume: $('sliderVolume'), volumeValue: $('volumeValue'),
         countdownToggle: $('countdownToggle'),
-        presetsList: $('presetsList'),
-        presetName: $('presetName'),
-        savePresetBtn: $('savePresetBtn'),
+        presetsList: $('presetsList'), presetName: $('presetName'), savePresetBtn: $('savePresetBtn'),
         measuresHint: $('measuresHint'),
+        installBtn: $('installBtn'), updateToast: $('updateToast'), updateBtn: $('updateBtn'),
+        offlineBadge: $('offlineBadge'),
     };
 
-    // === Утилиты ===
     const clamp = (n, mn, mx) => Math.max(mn, Math.min(mx, n));
-    function formatTime(s) {
-        if (!isFinite(s) || s < 0) return '--:--';
-        const m = Math.floor(s / 60), sec = Math.floor(s % 60);
-        return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
-    }
     function updateSliderFill(sl) {
         const min = +sl.min, max = +sl.max, val = +sl.value;
-        const pct = ((val - min) * 100) / (max - min);
-        sl.style.setProperty('--fill', pct + '%');
+        sl.style.setProperty('--fill', ((val - min) * 100) / (max - min) + '%');
     }
 
-    // === Парные ползунок + инпут ===
     function syncPair(slider, input, onChange) {
         const handler = (src) => {
             let v = parseFloat(src.value);
@@ -595,11 +530,7 @@
 
     syncPair(els.sliderA, els.inputA, (v) => {
         state.bpmA = v;
-        if (!state.running) {
-            state.currentBpm = v;
-            els.bpmDisplay.textContent = v;
-            updateNextBpmDisplay();
-        }
+        if (!state.running) { state.currentBpm = v; els.bpmDisplay.textContent = v; updateNextBpmDisplay(); }
     });
     syncPair(els.sliderB, els.inputB, (v) => { state.stepB = v; updateNextBpmDisplay(); });
     syncPair(els.sliderC, els.inputC, (v) => {
@@ -608,7 +539,6 @@
         if (!state.running) els.timeLeft.textContent = effectiveBeatsC() + ' уд.';
     });
 
-    // Громкость
     els.sliderVolume.addEventListener('input', () => {
         state.volume = +els.sliderVolume.value / 100;
         els.volumeValue.textContent = Math.round(state.volume * 100) + '%';
@@ -620,56 +550,45 @@
     });
     updateSliderFill(els.sliderVolume);
 
-    // Размер такта
     els.meterSegments.addEventListener('click', (e) => {
-        const btn = e.target.closest('.segment');
-        if (!btn) return;
+        const btn = e.target.closest('.segment'); if (!btn) return;
         els.meterSegments.querySelectorAll('.segment').forEach(s => s.classList.remove('active'));
         btn.classList.add('active');
         state.meter = +btn.dataset.meter;
-        renderBeatsIndicator();
-        updateMeasuresHint();
+        renderBeatsIndicator(); updateMeasuresHint();
         if (!state.running) els.timeLeft.textContent = effectiveBeatsC() + ' уд.';
         saveSettings();
     });
 
-    // Эффективное число ударов в партии — округляется ВВЕРХ до целого такта
     function effectiveBeatsC() {
         const m = state.meter > 1 ? state.meter : 1;
         return Math.max(m, Math.ceil(state.beatsC / m) * m);
     }
-
     function updateMeasuresHint() {
         const eff = effectiveBeatsC();
-        const measures = state.meter > 1 ? Math.round(eff / state.meter) : null;
-        if (measures !== null) {
+        if (state.meter > 1) {
+            const measures = Math.round(eff / state.meter);
             els.measuresHint.textContent = `≈ ${measures} ${measureWord(measures)} (${eff} уд.)`;
-            els.measuresHint.style.display = '';
         } else {
             els.measuresHint.textContent = `${eff} ударов`;
-            els.measuresHint.style.display = '';
         }
     }
     function measureWord(n) {
-        const mod10 = n % 10, mod100 = n % 100;
-        if (mod10 === 1 && mod100 !== 11) return 'такт';
-        if ([2,3,4].includes(mod10) && ![12,13,14].includes(mod100)) return 'такта';
+        const m10 = n % 10, m100 = n % 100;
+        if (m10 === 1 && m100 !== 11) return 'такт';
+        if ([2,3,4].includes(m10) && ![12,13,14].includes(m100)) return 'такта';
         return 'тактов';
     }
 
-    // Тембр
     els.timbreSegments.addEventListener('click', (e) => {
-        const btn = e.target.closest('.segment');
-        if (!btn) return;
+        const btn = e.target.closest('.segment'); if (!btn) return;
         els.timbreSegments.querySelectorAll('.segment').forEach(s => s.classList.remove('active'));
         btn.classList.add('active');
         state.timbre = btn.dataset.timbre;
-        // Превью звука
         if (!state.running) playPreview();
         saveSettings();
     });
 
-    // Голосовой отсчёт
     els.countdownToggle.addEventListener('change', () => {
         state.countdownEnabled = els.countdownToggle.checked;
         saveSettings();
@@ -680,7 +599,6 @@
         els.nextBpm.textContent = next > state.currentBpm ? next : '—';
     }
 
-    // === Индикатор долей ===
     function renderBeatsIndicator() {
         els.beatsIndicator.innerHTML = '';
         if (state.meter <= 1) return;
@@ -695,7 +613,6 @@
         dots.forEach((d, i) => d.classList.toggle('active', i === beatInMeasure));
     }
 
-    // === Web Audio ===
     function ensureAudio() {
         if (!state.audioCtx) {
             const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -708,20 +625,16 @@
         return state.audioCtx;
     }
 
-    // Тембры — разные синтез-рецепты
     function scheduleSound(time, accent) {
         const ctx = state.audioCtx;
-        const t = state.timbre;
-        if (t === 'click') return synthClick(ctx, time, accent);
-        if (t === 'woodblock') return synthWoodblock(ctx, time, accent);
-        if (t === 'beep') return synthBeep(ctx, time, accent);
-        if (t === 'tap') return synthTap(ctx, time, accent);
+        if (state.timbre === 'click') return synthClick(ctx, time, accent);
+        if (state.timbre === 'woodblock') return synthWoodblock(ctx, time, accent);
+        if (state.timbre === 'beep') return synthBeep(ctx, time, accent);
+        if (state.timbre === 'tap') return synthTap(ctx, time, accent);
         return synthClick(ctx, time, accent);
     }
-
     function synthClick(ctx, time, accent) {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
         osc.type = 'sine';
         osc.frequency.setValueAtTime(accent ? 1700 : 1000, time);
         osc.frequency.exponentialRampToValueAtTime(accent ? 900 : 500, time + 0.04);
@@ -731,15 +644,9 @@
         osc.connect(gain); gain.connect(state.masterGain);
         osc.start(time); osc.stop(time + 0.1);
     }
-
     function synthWoodblock(ctx, time, accent) {
-        // Триангл + быстрый pitch-down + сильное затухание
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'bandpass';
-        filter.frequency.value = accent ? 2200 : 1400;
-        filter.Q.value = 8;
+        const osc = ctx.createOscillator(), gain = ctx.createGain(), filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass'; filter.frequency.value = accent ? 2200 : 1400; filter.Q.value = 8;
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(accent ? 2400 : 1800, time);
         osc.frequency.exponentialRampToValueAtTime(accent ? 600 : 400, time + 0.03);
@@ -749,11 +656,8 @@
         osc.connect(filter); filter.connect(gain); gain.connect(state.masterGain);
         osc.start(time); osc.stop(time + 0.08);
     }
-
     function synthBeep(ctx, time, accent) {
-        // Чистый square — электронный «бип»
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
         osc.type = 'square';
         osc.frequency.setValueAtTime(accent ? 1320 : 880, time);
         gain.gain.setValueAtTime(0.0001, time);
@@ -763,19 +667,14 @@
         osc.connect(gain); gain.connect(state.masterGain);
         osc.start(time); osc.stop(time + 0.1);
     }
-
     function synthTap(ctx, time, accent) {
-        // Шум через буфер + bandpass — мягкий «tap»
         const dur = 0.05;
         const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
         const data = buf.getChannelData(0);
         for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
-        const src = ctx.createBufferSource();
-        src.buffer = buf;
+        const src = ctx.createBufferSource(); src.buffer = buf;
         const filter = ctx.createBiquadFilter();
-        filter.type = 'bandpass';
-        filter.frequency.value = accent ? 3000 : 2000;
-        filter.Q.value = 6;
+        filter.type = 'bandpass'; filter.frequency.value = accent ? 3000 : 2000; filter.Q.value = 6;
         const gain = ctx.createGain();
         gain.gain.setValueAtTime(0.0001, time);
         gain.gain.exponentialRampToValueAtTime(accent ? 0.7 : 0.45, time + 0.002);
@@ -783,39 +682,29 @@
         src.connect(filter); filter.connect(gain); gain.connect(state.masterGain);
         src.start(time); src.stop(time + dur);
     }
-
     function playPreview() {
         const ctx = ensureAudio();
         scheduleSound(ctx.currentTime + 0.02, false);
     }
 
-    // === Планировщик ===
     function scheduler() {
         if (!state.running) return;
         const ctx = state.audioCtx;
         while (state.nextBeatTime < ctx.currentTime + state.scheduleAheadTime) {
-            // Перед планированием очередного удара проверяем — не пора ли поднять темп.
-            // Условие: уже сыграно >= effectiveBeatsC ударов И мы стоим на границе такта (1-я доля),
-            // либо размер 1 (без акцента).
             const eff = effectiveBeatsC();
             const onMeasureBoundary = state.meter <= 1 || (state.beatCountInParty % state.meter === 0);
             if (state.beatCountInParty >= eff && onMeasureBoundary) {
-                const next = clamp(state.currentBpm + state.stepB, 20, 300);
-                state.currentBpm = next;
-                els.bpmDisplay.textContent = next;
-                state.beatCountInParty = 0;
-                state.beatInMeasure = 0;
+                state.currentBpm = clamp(state.currentBpm + state.stepB, 20, 300);
+                els.bpmDisplay.textContent = state.currentBpm;
+                state.beatCountInParty = 0; state.beatInMeasure = 0;
                 updateNextBpmDisplay();
             }
-
             const beatInMeasure = state.meter > 1 ? state.beatInMeasure : -1;
             const isAccent = state.meter > 1 && beatInMeasure === 0;
             scheduleSound(state.nextBeatTime, isAccent);
             scheduleVisualBeat(state.nextBeatTime, isAccent, beatInMeasure);
-            const sec = 60.0 / state.currentBpm;
-            state.nextBeatTime += sec;
-            state.beatCount++;
-            state.beatCountInParty++;
+            state.nextBeatTime += 60.0 / state.currentBpm;
+            state.beatCount++; state.beatCountInParty++;
             if (state.meter > 1) state.beatInMeasure = (state.beatInMeasure + 1) % state.meter;
         }
     }
@@ -824,7 +713,6 @@
     function scheduleVisualBeat(audioTime, accent, beatInMeasure) {
         beatQueue.push({ time: audioTime, accent, beatInMeasure });
     }
-
     let ringToggle = 0;
     function visualLoop() {
         if (!state.audioCtx) { requestAnimationFrame(visualLoop); return; }
@@ -836,65 +724,48 @@
         if (state.running) updateProgress();
         requestAnimationFrame(visualLoop);
     }
-
     function triggerPulse(accent, beatInMeasure) {
         els.pulseCore.classList.remove('beat', 'accent');
         void els.pulseCore.offsetWidth;
         els.pulseCore.classList.add('beat');
         if (accent) els.pulseCore.classList.add('accent');
         setTimeout(() => els.pulseCore.classList.remove('beat', 'accent'), 130);
-
         const ring = ringToggle++ % 2 === 0 ? els.ring1 : els.ring2;
         ring.classList.remove('animate', 'accent');
         void ring.offsetWidth;
         ring.classList.add('animate');
         if (accent) ring.classList.add('accent');
-
         if (beatInMeasure >= 0) highlightBeat(beatInMeasure);
     }
-
-    // === Прогресс по ударам ===
     function updateProgress() {
         const eff = effectiveBeatsC();
         const done = clamp(state.beatCountInParty, 0, eff);
         const ratio = eff > 0 ? done / eff : 0;
         els.progressFill.style.width = (ratio * 100) + '%';
         els.progressPercent.textContent = Math.floor(ratio * 100) + '%';
-        const remaining = Math.max(0, eff - done);
-        els.timeLeft.textContent = remaining + ' уд.';
+        els.timeLeft.textContent = Math.max(0, eff - done) + ' уд.';
     }
 
-    // === Голосовой отсчёт ===
     function speakWord(word) {
         if (!('speechSynthesis' in window)) return;
         try {
             const u = new SpeechSynthesisUtterance(word);
-            u.lang = 'ru-RU';
-            u.rate = 1.05;
-            u.pitch = 1.0;
-            u.volume = state.volume;
-            // Постараемся выбрать русский голос
-            const voices = window.speechSynthesis.getVoices();
-            const ru = voices.find(v => /ru/i.test(v.lang));
+            u.lang = 'ru-RU'; u.rate = 1.05; u.pitch = 1.0; u.volume = state.volume;
+            const ru = window.speechSynthesis.getVoices().find(v => /ru/i.test(v.lang));
             if (ru) u.voice = ru;
             window.speechSynthesis.speak(u);
-        } catch (e) { /* noop */ }
+        } catch (e) {}
     }
 
     function runCountdown(thenStart) {
         const words = ['раз', 'два', 'три', 'четыре'];
         const beatMs = 60000 / state.currentBpm;
         state.countdownActive = true;
-        // Прогрев голоса (Chrome иногда теряет первое слово)
         if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-
         const ctx = ensureAudio();
-
         words.forEach((w, i) => {
             const tAudio = ctx.currentTime + (i * beatMs) / 1000 + 0.05;
-            // Звук-тик во время отсчёта (для синхронизации с темпом)
             scheduleSound(tAudio, i === 0);
-            // Визуальная цифра + произношение через setTimeout
             const visualMs = i * beatMs + 50;
             const t1 = setTimeout(() => {
                 els.countdownOverlay.textContent = i + 1;
@@ -904,31 +775,23 @@
             }, visualMs);
             state.countdownTimers.push(t1);
         });
-
-        const finishMs = words.length * beatMs + 80;
         const tEnd = setTimeout(() => {
             els.countdownOverlay.classList.remove('active');
-            state.countdownActive = false;
-            state.countdownTimers = [];
+            state.countdownActive = false; state.countdownTimers = [];
             thenStart();
-        }, finishMs);
+        }, words.length * beatMs + 80);
         state.countdownTimers.push(tEnd);
     }
-
     function abortCountdown() {
         state.countdownTimers.forEach(t => clearTimeout(t));
-        state.countdownTimers = [];
-        state.countdownActive = false;
+        state.countdownTimers = []; state.countdownActive = false;
         els.countdownOverlay.classList.remove('active');
         if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     }
 
-    // === Управление ===
     function startMetronome() {
         const ctx = state.audioCtx;
-        state.beatCount = 0;
-        state.beatCountInParty = 0;
-        state.beatInMeasure = 0;
+        state.beatCount = 0; state.beatCountInParty = 0; state.beatInMeasure = 0;
         state.currentBpm = state.bpmA;
         els.bpmDisplay.textContent = state.currentBpm;
         state.nextBeatTime = ctx.currentTime + 0.05;
@@ -938,14 +801,11 @@
         els.stopBtn.classList.add('active');
         updateNextBpmDisplay();
     }
-
     function start() {
         if (state.running || state.countdownActive) return;
         ensureAudio();
-        // Возобновление после паузы (счётчик ударов сохранён) — без отсчёта
         if (state.beatCount > 0) {
-            const ctx = state.audioCtx;
-            state.nextBeatTime = ctx.currentTime + 0.05;
+            state.nextBeatTime = state.audioCtx.currentTime + 0.05;
             state.running = true;
             state.timerId = setInterval(scheduler, state.lookahead);
             els.startBtn.textContent = 'Пауза';
@@ -953,30 +813,21 @@
             updateNextBpmDisplay();
             return;
         }
-        // Первый старт — с отсчётом, если включён
-        if (state.countdownEnabled) {
-            runCountdown(() => startMetronome());
-        } else {
-            startMetronome();
-        }
+        if (state.countdownEnabled) runCountdown(() => startMetronome());
+        else startMetronome();
     }
-
     function pause() {
         if (state.countdownActive) abortCountdown();
         if (!state.running) return;
         state.running = false;
-        clearInterval(state.timerId);
-        state.timerId = null;
+        clearInterval(state.timerId); state.timerId = null;
         beatQueue = [];
         els.startBtn.textContent = 'Старт';
         els.stopBtn.classList.remove('active');
     }
-
     function reset() {
         pause();
-        state.beatCount = 0;
-        state.beatCountInParty = 0;
-        state.beatInMeasure = 0;
+        state.beatCount = 0; state.beatCountInParty = 0; state.beatInMeasure = 0;
         state.currentBpm = state.bpmA;
         els.bpmDisplay.textContent = state.bpmA;
         els.progressFill.style.width = '0%';
@@ -990,7 +841,6 @@
     els.startBtn.addEventListener('click', () => { state.running ? pause() : start(); });
     els.stopBtn.addEventListener('click', pause);
     els.resetBtn.addEventListener('click', reset);
-
     document.addEventListener('keydown', (e) => {
         if (e.code === 'Space' && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
             e.preventDefault();
@@ -998,21 +848,15 @@
         }
     });
 
-    // === Пресеты ===
+    // Пресеты
     function loadUserPresets() {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            return raw ? JSON.parse(raw) : [];
-        } catch { return []; }
+        try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
     }
-    function saveUserPresets(list) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-    }
+    function saveUserPresets(list) { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     function renderPresets() {
         els.presetsList.innerHTML = '';
-        const user = loadUserPresets();
-        const all = [...BUILTIN_PRESETS, ...user];
-
+        const all = [...BUILTIN_PRESETS, ...loadUserPresets()];
         if (all.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'empty-state';
@@ -1020,7 +864,6 @@
             els.presetsList.appendChild(empty);
             return;
         }
-
         all.forEach(p => {
             const item = document.createElement('div');
             item.className = 'preset-item' + (p.builtin ? ' preset-builtin' : '');
@@ -1036,53 +879,33 @@
             const actions = item.querySelector('.preset-actions');
             if (p.builtin) {
                 const tag = document.createElement('span');
-                tag.className = 'preset-btn builtin-tag';
-                tag.textContent = 'базовый';
+                tag.className = 'preset-btn builtin-tag'; tag.textContent = 'базовый';
                 actions.appendChild(tag);
             }
             const loadBtn = document.createElement('button');
-            loadBtn.className = 'preset-btn load';
-            loadBtn.textContent = 'Загрузить';
+            loadBtn.className = 'preset-btn load'; loadBtn.textContent = 'Загрузить';
             loadBtn.onclick = () => loadPreset(p);
             actions.appendChild(loadBtn);
-
             if (!p.builtin) {
                 const delBtn = document.createElement('button');
-                delBtn.className = 'preset-btn delete';
-                delBtn.textContent = '✕';
-                delBtn.title = 'Удалить';
+                delBtn.className = 'preset-btn delete'; delBtn.textContent = '✕'; delBtn.title = 'Удалить';
                 delBtn.onclick = () => deletePreset(p.id);
                 actions.appendChild(delBtn);
             }
             els.presetsList.appendChild(item);
         });
     }
-
-    function escapeHtml(s) {
-        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    }
-
     function loadPreset(p) {
-        // Применяем все поля
         els.sliderA.value = els.inputA.value = p.a;
         els.sliderB.value = els.inputB.value = p.b;
         els.sliderC.value = els.inputC.value = p.c;
         state.bpmA = p.a; state.stepB = p.b; state.beatsC = p.c;
-        updateSliderFill(els.sliderA);
-        updateSliderFill(els.sliderB);
-        updateSliderFill(els.sliderC);
-
+        updateSliderFill(els.sliderA); updateSliderFill(els.sliderB); updateSliderFill(els.sliderC);
         state.meter = p.meter || 4;
-        els.meterSegments.querySelectorAll('.segment').forEach(s => {
-            s.classList.toggle('active', +s.dataset.meter === state.meter);
-        });
-        renderBeatsIndicator();
-
+        els.meterSegments.querySelectorAll('.segment').forEach(s => s.classList.toggle('active', +s.dataset.meter === state.meter));
+        renderBeatsIndicator(); updateMeasuresHint();
         state.timbre = p.timbre || 'click';
-        els.timbreSegments.querySelectorAll('.segment').forEach(s => {
-            s.classList.toggle('active', s.dataset.timbre === state.timbre);
-        });
-
+        els.timbreSegments.querySelectorAll('.segment').forEach(s => s.classList.toggle('active', s.dataset.timbre === state.timbre));
         if (typeof p.volume === 'number') {
             state.volume = p.volume;
             els.sliderVolume.value = Math.round(p.volume * 100);
@@ -1090,36 +913,24 @@
             updateSliderFill(els.sliderVolume);
             if (state.masterGain) state.masterGain.gain.value = state.volume;
         }
-
-        reset();
-        saveSettings();
+        reset(); saveSettings();
     }
-
     function deletePreset(id) {
         if (!confirm('Удалить пресет?')) return;
-        const list = loadUserPresets().filter(p => p.id !== id);
-        saveUserPresets(list);
+        saveUserPresets(loadUserPresets().filter(p => p.id !== id));
         renderPresets();
     }
-
     els.savePresetBtn.addEventListener('click', () => {
         const name = els.presetName.value.trim();
         if (!name) { els.presetName.focus(); return; }
         const list = loadUserPresets();
-        list.push({
-            id: 'u-' + Date.now(),
-            name, a: state.bpmA, b: state.stepB, c: state.beatsC,
-            meter: state.meter, timbre: state.timbre, volume: state.volume,
-        });
+        list.push({ id: 'u-' + Date.now(), name, a: state.bpmA, b: state.stepB, c: state.beatsC, meter: state.meter, timbre: state.timbre, volume: state.volume });
         saveUserPresets(list);
         els.presetName.value = '';
         renderPresets();
     });
-    els.presetName.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') els.savePresetBtn.click();
-    });
+    els.presetName.addEventListener('keydown', (e) => { if (e.key === 'Enter') els.savePresetBtn.click(); });
 
-    // === Сохранение текущих настроек ===
     function saveSettings() {
         try {
             localStorage.setItem(SETTINGS_KEY, JSON.stringify({
@@ -1131,23 +942,18 @@
     }
     function loadSettings() {
         try {
-            const raw = localStorage.getItem(SETTINGS_KEY);
-            if (!raw) return;
+            const raw = localStorage.getItem(SETTINGS_KEY); if (!raw) return;
             const s = JSON.parse(raw);
             if (s.a) { state.bpmA = s.a; els.sliderA.value = els.inputA.value = s.a; updateSliderFill(els.sliderA); }
             if (s.b) { state.stepB = s.b; els.sliderB.value = els.inputB.value = s.b; updateSliderFill(els.sliderB); }
             if (s.c) { state.beatsC = s.c; els.sliderC.value = els.inputC.value = s.c; updateSliderFill(els.sliderC); }
             if (s.meter) {
                 state.meter = s.meter;
-                els.meterSegments.querySelectorAll('.segment').forEach(seg => {
-                    seg.classList.toggle('active', +seg.dataset.meter === state.meter);
-                });
+                els.meterSegments.querySelectorAll('.segment').forEach(seg => seg.classList.toggle('active', +seg.dataset.meter === state.meter));
             }
             if (s.timbre) {
                 state.timbre = s.timbre;
-                els.timbreSegments.querySelectorAll('.segment').forEach(seg => {
-                    seg.classList.toggle('active', seg.dataset.timbre === state.timbre);
-                });
+                els.timbreSegments.querySelectorAll('.segment').forEach(seg => seg.classList.toggle('active', seg.dataset.timbre === state.timbre));
             }
             if (typeof s.volume === 'number') {
                 state.volume = s.volume;
@@ -1162,7 +968,6 @@
         } catch {}
     }
 
-    // === Инициализация ===
     loadSettings();
     state.currentBpm = state.bpmA;
     els.bpmDisplay.textContent = state.bpmA;
@@ -1173,10 +978,60 @@
     renderPresets();
     requestAnimationFrame(visualLoop);
 
-    // Прогрев голосов (Chrome загружает асинхронно)
     if ('speechSynthesis' in window) {
         window.speechSynthesis.getVoices();
         window.speechSynthesis.addEventListener?.('voiceschanged', () => window.speechSynthesis.getVoices());
+    }
+
+    // === PWA ===
+    let deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        els.installBtn.classList.add('visible');
+    });
+    els.installBtn.addEventListener('click', async () => {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        try { await deferredInstallPrompt.userChoice; } catch {}
+        deferredInstallPrompt = null;
+        els.installBtn.classList.remove('visible');
+    });
+    window.addEventListener('appinstalled', () => {
+        els.installBtn.classList.remove('visible');
+        deferredInstallPrompt = null;
+    });
+    // Если уже установлено — кнопку не показываем
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+        els.installBtn.classList.remove('visible');
+    }
+
+    // Регистрация Service Worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js').then((reg) => {
+                els.offlineBadge.style.display = 'inline-flex';
+                // Слушаем обновления
+                reg.addEventListener('updatefound', () => {
+                    const newWorker = reg.installing;
+                    if (!newWorker) return;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            els.updateToast.classList.add('visible');
+                            els.updateBtn.onclick = () => {
+                                newWorker.postMessage({ type: 'SKIP_WAITING' });
+                                window.location.reload();
+                            };
+                        }
+                    });
+                });
+            }).catch(err => console.warn('SW registration failed:', err));
+
+            // Если SW активирован — показываем бейдж
+            if (navigator.serviceWorker.controller) {
+                els.offlineBadge.style.display = 'inline-flex';
+            }
+        });
     }
 })();
 </script>
