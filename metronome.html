@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0a0a18" />
+<title>Прогрессивный метроном для гитары</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    :root {
+        --bg-1: #0a0a18;
+        --bg-2: #1a0b2e;
+        --bg-3: #16213e;
+        --accent: #00e5ff;
+        --accent-2: #b794f6;
+        --accent-3: #ff4d8d;
+        --accent-warm: #ffb95a;
+        --text: #ffffff;
+        --text-dim: rgba(255, 255, 255, 0.6);
+        --text-mid: rgba(255, 255, 255, 0.8);
+        --glass-bg: rgba(255, 255, 255, 0.05);
+        --glass-border: rgba(255, 255, 255, 0.12);
+        --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+    }
+
+    html, body {
+        min-height: 100vh;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: var(--text);
+        overflow-x: hidden;
+    }
+    body {
+        background:
+            radial-gradient(ellipse at 20% 0%, rgba(183,148,246,0.25), transparent 55%),
+            radial-gradient(ellipse at 80% 100%, rgba(0,229,255,0.18), transparent 55%),
+            radial-gradient(ellipse at 50% 50%, rgba(255,77,141,0.10), transparent 60%),
+            linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 50%, var(--bg-3) 100%);
+        background-attachment: fixed;
+        min-height: 100vh;
+        padding: 24px 16px 40px;
+        display: flex; flex-direction: column; align-items: center;
+    }
+
+    .blob { position: fixed; border-radius: 50%; filter: blur(80px); opacity: 0.35; pointer-events: none; z-index: 0; animation: float 18s ease-in-out infinite; }
+    .blob-1 { width: 320px; height: 320px; background: var(--accent); top: -80px; left: -80px; }
+    .blob-2 { width: 280px; height: 280px; background: var(--accent-2); bottom: -60px; right: -60px; animation-delay: -6s; }
+    .blob-3 { width: 220px; height: 220px; background: var(--accent-3); top: 50%; left: 60%; animation-delay: -12s; }
+    @keyframes float {
+        0%,100% { transform: translate(0,0) scale(1); }
+        33% { transform: translate(30px,-20px) scale(1.05); }
+        66% { transform: translate(-20px,30px) scale(0.95); }
+    }
+
+    .container { position: relative; z-index: 1; width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 20px; }
+    header { text-align: center; }
+    header h1 {
+        font-size: clamp(18px, 4vw, 24px);
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        background: linear-gradient(90deg, var(--accent), var(--accent-2));
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    header p { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+
+    .glass {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 24px;
+        backdrop-filter: blur(22px) saturate(150%);
+        -webkit-backdrop-filter: blur(22px) saturate(150%);
+        box-shadow: var(--glass-shadow);
+    }
+
+    /* === Дисплей === */
+    .display-panel {
+        padding: 28px 24px; display: flex; flex-direction: column; align-items: center; gap: 18px;
+        position: relative; overflow: hidden;
+    }
+    .display-panel::before {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(135deg, rgba(0,229,255,0.08), transparent 60%);
+        pointer-events: none;
+    }
+    .pulse-stage { position: relative; width: 220px; height: 220px; display: flex; align-items: center; justify-content: center; }
+    .ring { position: absolute; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; pointer-events: none; }
+    .ring.animate { animation: ringPulse 0.55s ease-out; }
+    .ring.animate.accent { border-color: var(--accent-warm); animation: ringPulseAccent 0.65s ease-out; }
+    @keyframes ringPulse {
+        0% { width: 80px; height: 80px; opacity: 0.85; border-width: 3px; }
+        100% { width: 240px; height: 240px; opacity: 0; border-width: 1px; }
+    }
+    @keyframes ringPulseAccent {
+        0% { width: 90px; height: 90px; opacity: 1; border-width: 4px; }
+        100% { width: 260px; height: 260px; opacity: 0; border-width: 1px; }
+    }
+    .pulse-core {
+        width: 160px; height: 160px; border-radius: 50%;
+        background: radial-gradient(circle at 30% 30%, rgba(0,229,255,0.4), rgba(183,148,246,0.25) 50%, rgba(10,10,24,0.9) 100%);
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        box-shadow:
+            inset 0 0 30px rgba(0,229,255,0.25),
+            0 0 40px rgba(0,229,255,0.18),
+            0 0 80px rgba(183,148,246,0.12);
+        transition: transform 0.1s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.1s ease;
+        position: relative; z-index: 2;
+    }
+    .pulse-core.beat {
+        transform: scale(1.08);
+        box-shadow:
+            inset 0 0 40px rgba(0,229,255,0.5),
+            0 0 60px rgba(0,229,255,0.45),
+            0 0 100px rgba(183,148,246,0.25);
+    }
+    .pulse-core.beat.accent {
+        transform: scale(1.12);
+        background: radial-gradient(circle at 30% 30%, rgba(255,185,90,0.55), rgba(255,77,141,0.25) 50%, rgba(10,10,24,0.9) 100%);
+        box-shadow:
+            inset 0 0 50px rgba(255,185,90,0.5),
+            0 0 80px rgba(255,185,90,0.5),
+            0 0 120px rgba(255,77,141,0.3);
+    }
+    .bpm-value {
+        font-size: 64px; font-weight: 800; line-height: 1; letter-spacing: -2px;
+        background: linear-gradient(180deg, #ffffff, #b794f6);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+        font-variant-numeric: tabular-nums;
+    }
+    .bpm-label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; }
+
+    .countdown-overlay {
+        position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+        font-size: 110px; font-weight: 900; color: var(--accent-warm);
+        text-shadow: 0 0 30px rgba(255,185,90,0.7);
+        z-index: 5; pointer-events: none;
+    }
+    .countdown-overlay.active { display: flex; }
+
+    /* Точки долей такта */
+    .beats-indicator {
+        display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+        max-width: 460px;
+    }
+    .beat-dot {
+        width: 14px; height: 14px; border-radius: 50%;
+        background: rgba(255,255,255,0.12);
+        border: 1px solid rgba(255,255,255,0.2);
+        transition: all 0.12s ease;
+    }
+    .beat-dot.active { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 12px rgba(0,229,255,0.6); transform: scale(1.25); }
+    .beat-dot.first { width: 18px; height: 18px; }
+    .beat-dot.first.active { background: var(--accent-warm); border-color: var(--accent-warm); box-shadow: 0 0 16px rgba(255,185,90,0.7); }
+
+    .info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 460px; }
+    .info-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 12px 14px; text-align: center; }
+    .info-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 4px; }
+    .info-card .value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+    .info-card .value.next-bpm { color: var(--accent); }
+
+    .progress-wrap { width: 100%; max-width: 460px; }
+    .progress-info { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .progress-bar { position: relative; width: 100%; height: 8px; background: rgba(255,255,255,0.06); border-radius: 99px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent-3)); border-radius: 99px; width: 0%; transition: width 0.2s linear; box-shadow: 0 0 10px rgba(0,229,255,0.4); }
+
+    .controls { display: flex; gap: 12px; width: 100%; max-width: 460px; }
+    .btn {
+        flex: 1; padding: 16px 20px; font-size: 16px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 1.5px;
+        border: 1px solid var(--glass-border); border-radius: 16px;
+        background: rgba(255,255,255,0.06); color: var(--text); cursor: pointer;
+        transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
+        font-family: inherit;
+    }
+    .btn:hover { background: rgba(255,255,255,0.1); }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #0a0a18; border-color: transparent;
+        box-shadow: 0 4px 20px rgba(0,229,255,0.35);
+    }
+    .btn-primary:hover { box-shadow: 0 6px 28px rgba(0,229,255,0.5); background: linear-gradient(135deg, var(--accent-2), var(--accent)); }
+    .btn-danger.active {
+        background: linear-gradient(135deg, var(--accent-3), #ff8e53);
+        color: #0a0a18; border-color: transparent;
+        box-shadow: 0 4px 20px rgba(255,77,141,0.35);
+    }
+    .btn-sm { padding: 10px 12px; font-size: 12px; letter-spacing: 1px; }
+
+    /* === Настройки === */
+    .panel { padding: 22px 22px 26px; }
+    .panel-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); margin-bottom: 18px; text-align: center; }
+
+    .slider-group { margin-bottom: 22px; }
+    .slider-group:last-child { margin-bottom: 0; }
+    .slider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap; }
+    .slider-name { font-size: 14px; font-weight: 600; color: var(--text); }
+    .slider-name .tag {
+        display: inline-block; background: rgba(0,229,255,0.15); color: var(--accent);
+        font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; margin-right: 8px; font-family: monospace;
+    }
+    .slider-name .desc { color: var(--text-dim); font-weight: 400; font-size: 13px; }
+
+    .number-input {
+        width: 90px; padding: 8px 10px;
+        background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 10px; color: var(--text);
+        font-size: 15px; font-weight: 700; text-align: center;
+        font-family: inherit; font-variant-numeric: tabular-nums; outline: none;
+        transition: border-color 0.2s ease, background 0.2s ease;
+    }
+    .number-input:focus { border-color: var(--accent); background: rgba(0,229,255,0.08); }
+    .number-input::-webkit-outer-spin-button, .number-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .number-input[type=number] { -moz-appearance: textfield; }
+
+    .slider {
+        -webkit-appearance: none; appearance: none; width: 100%; height: 8px;
+        background: rgba(255,255,255,0.08); border-radius: 99px; outline: none; cursor: pointer; position: relative;
+    }
+    .slider::-webkit-slider-runnable-track {
+        height: 8px;
+        background: linear-gradient(90deg, var(--accent) 0%, var(--accent) var(--fill, 0%), rgba(255,255,255,0.08) var(--fill, 0%));
+        border-radius: 99px;
+    }
+    .slider::-moz-range-track { height: 8px; background: rgba(255,255,255,0.08); border-radius: 99px; }
+    .slider::-moz-range-progress { height: 8px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 99px; }
+    .slider::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 22px; height: 22px; margin-top: -7px;
+        border-radius: 50%; background: #ffffff; border: 3px solid var(--accent);
+        cursor: grab; box-shadow: 0 2px 10px rgba(0,229,255,0.45);
+        transition: transform 0.15s ease;
+    }
+    .slider::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.15); }
+    .slider::-moz-range-thumb {
+        width: 22px; height: 22px; border-radius: 50%; background: #ffffff;
+        border: 3px solid var(--accent); cursor: grab; box-shadow: 0 2px 10px rgba(0,229,255,0.45);
+    }
+    .slider:disabled { opacity: 0.5; cursor: not-allowed; }
+    .slider-row { display: flex; align-items: center; gap: 14px; }
+    .slider-row .slider { flex: 1; }
+    .slider-min-max { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+    /* Сегменты (выбор) */
+    .segments {
+        display: flex; gap: 6px; padding: 4px;
+        background: rgba(0,0,0,0.25);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 14px;
+        flex-wrap: wrap;
+    }
+    .segment {
+        flex: 1 1 auto; min-width: 48px; padding: 10px 12px;
+        background: transparent; border: none; color: var(--text-dim);
+        font-family: inherit; font-size: 13px; font-weight: 600;
+        border-radius: 10px; cursor: pointer; transition: all 0.18s ease;
+        text-align: center;
+    }
+    .segment:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    .segment.active {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #0a0a18; box-shadow: 0 2px 10px rgba(0,229,255,0.3);
+    }
+
+    .toggle {
+        position: relative; display: inline-flex; align-items: center; gap: 10px;
+        cursor: pointer; user-select: none;
+    }
+    .toggle input { display: none; }
+    .toggle .track {
+        width: 44px; height: 24px; background: rgba(255,255,255,0.12);
+        border-radius: 99px; position: relative; transition: background 0.2s ease;
+    }
+    .toggle .track::after {
+        content: ''; position: absolute; top: 2px; left: 2px;
+        width: 20px; height: 20px; border-radius: 50%; background: #ffffff;
+        transition: transform 0.2s ease;
+    }
+    .toggle input:checked + .track { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+    .toggle input:checked + .track::after { transform: translateX(20px); }
+
+    /* Пресеты */
+    .presets-list { display: flex; flex-direction: column; gap: 8px; }
+    .preset-item {
+        display: flex; align-items: center; gap: 10px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 12px; padding: 10px 12px;
+    }
+    .preset-info { flex: 1; min-width: 0; }
+    .preset-name { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .preset-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .preset-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .preset-btn {
+        padding: 7px 12px; font-size: 12px; font-weight: 600;
+        background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 8px; color: var(--text); cursor: pointer; font-family: inherit;
+        transition: background 0.15s ease;
+    }
+    .preset-btn:hover { background: rgba(255,255,255,0.12); }
+    .preset-btn.load { color: var(--accent); }
+    .preset-btn.delete { color: var(--accent-3); }
+    .preset-btn.builtin-tag {
+        background: rgba(255,185,90,0.12); color: var(--accent-warm);
+        border-color: rgba(255,185,90,0.25); cursor: default; font-size: 10px;
+        text-transform: uppercase; letter-spacing: 1px;
+    }
+    .preset-builtin .preset-name { color: var(--accent-warm); }
+
+    .preset-save-row { display: flex; gap: 8px; margin-top: 14px; }
+    .preset-save-row input {
+        flex: 1; padding: 10px 12px;
+        background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 12px; color: var(--text); font-family: inherit; font-size: 14px;
+        outline: none;
+    }
+    .preset-save-row input:focus { border-color: var(--accent); background: rgba(0,229,255,0.06); }
+    .preset-save-row .btn { flex: 0 0 auto; padding: 10px 16px; font-size: 13px; }
+
+    .empty-state { text-align: center; color: var(--text-dim); font-size: 13px; padding: 14px 8px; font-style: italic; }
+
+    footer { margin-top: 6px; text-align: center; font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+    footer .key {
+        background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 6px; padding: 1px 6px; font-family: monospace; color: var(--text); font-size: 11px;
+    }
+
+    @media (max-width: 480px) {
+        body { padding: 16px 12px 32px; }
+        .display-panel, .panel { padding: 22px 16px; }
+        .pulse-stage { width: 200px; height: 200px; }
+        .pulse-core { width: 150px; height: 150px; }
+        .bpm-value { font-size: 56px; }
+        .info-row { gap: 8px; }
+        .info-card { padding: 10px; }
+        .info-card .value { font-size: 16px; }
+        .controls { gap: 8px; }
+        .btn { padding: 14px 12px; font-size: 14px; letter-spacing: 1px; }
+        .number-input { width: 80px; font-size: 14px; padding: 6px 8px; }
+        .slider-name .desc { display: none; }
+        .countdown-overlay { font-size: 90px; }
+    }
+    @media (min-width: 768px) {
+        .pulse-stage { width: 260px; height: 260px; }
+        .pulse-core { width: 180px; height: 180px; }
+        .bpm-value { font-size: 72px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .blob, .pulse-core, .ring.animate { animation: none !important; transition: none !important; }
+    }
+</style>
+</head>
+<body>
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+<div class="container">
+    <header>
+        <h1>Прогрессивный метроном</h1>
+        <p>Тренировочный инструмент для гитары с автоматическим разгоном темпа</p>
+    </header>
+
+    <!-- Дисплей -->
+    <section class="glass display-panel">
+        <div class="pulse-stage">
+            <div class="ring" id="ring1"></div>
+            <div class="ring" id="ring2"></div>
+            <div class="pulse-core" id="pulseCore">
+                <div class="bpm-value" id="bpmDisplay">60</div>
+                <div class="bpm-label">BPM</div>
+            </div>
+            <div class="countdown-overlay" id="countdownOverlay"></div>
+        </div>
+
+        <div class="beats-indicator" id="beatsIndicator"></div>
+
+        <div class="info-row">
+            <div class="info-card">
+                <div class="label">До ускорения</div>
+                <div class="value" id="timeLeft">--:--</div>
+            </div>
+            <div class="info-card">
+                <div class="label">Следующий BPM</div>
+                <div class="value next-bpm" id="nextBpm">—</div>
+            </div>
+        </div>
+
+        <div class="progress-wrap">
+            <div class="progress-info">
+                <span>Прогресс партии</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-primary" id="startBtn">Старт</button>
+            <button class="btn btn-danger" id="stopBtn">Стоп</button>
+            <button class="btn" id="resetBtn">Сброс</button>
+        </div>
+    </section>
+
+    <!-- Параметры разгона -->
+    <section class="glass panel">
+        <div class="panel-title">Темп и разгон</div>
+
+        <div class="slider-group">
+            <div class="slider-header">
+                <div class="slider-name"><span class="tag">A</span>Стартовый темп<span class="desc"> — ударов в минуту</span></div>
+                <input type="number" class="number-input" id="inputA" min="20" max="300" value="60" step="1" />
+            </div>
+            <div class="slider-row"><input type="range" class="slider" id="sliderA" min="20" max="300" value="60" step="1" /></div>
+            <div class="slider-min-max"><span>20</span><span>300</span></div>
+        </div>
+
+        <div class="slider-group">
+            <div class="slider-header">
+                <div class="slider-name"><span class="tag">B</span>Шаг увеличения<span class="desc"> — +BPM каждую партию</span></div>
+                <input type="number" class="number-input" id="inputB" min="1" max="30" value="5" step="1" />
+            </div>
+            <div class="slider-row"><input type="range" class="slider" id="sliderB" min="1" max="30" value="5" step="1" /></div>
+            <div class="slider-min-max"><span>1</span><span>30</span></div>
+        </div>
+
+        <div class="slider-group">
+            <div class="slider-header">
+                <div class="slider-name"><span class="tag">C</span>Длительность партии<span class="desc"> — минут</span></div>
+                <input type="number" class="number-input" id="inputC" min="0.5" max="30" value="2" step="0.5" />
+            </div>
+            <div class="slider-row"><input type="range" class="slider" id="sliderC" min="0.5" max="30" value="2" step="0.5" /></div>
+            <div class="slider-min-max"><span>0,5 мин</span><span>30 мин</span></div>
+        </div>
+    </section>
+
+    <!-- Звук и такт -->
+    <section class="glass panel">
+        <div class="panel-title">Звук и такт</div>
+
+        <div class="slider-group">
+            <div class="slider-header">
+                <div class="slider-name">Размер такта<span class="desc"> — акцент на 1-ю долю</span></div>
+            </div>
+            <div class="segments" id="meterSegments">
+                <button class="segment" data-meter="1">Без акц.</button>
+                <button class="segment" data-meter="2">2/4</button>
+                <button class="segment" data-meter="3">3/4</button>
+                <button class="segment active" data-meter="4">4/4</button>
+                <button class="segment" data-meter="6">6/8</button>
+                <button class="segment" data-meter="8">8/8</button>
+            </div>
+        </div>
+
+        <div class="slider-group">
+            <div class="slider-header">
+                <div class="slider-name">Тембр клика</div>
+            </div>
+            <div class="segments" id="timbreSegments">
+                <button class="segment active" data-timbre="click">Click</button>
+                <button class="segment" data-timbre="woodblock">Woodblock</button>
+                <button class="segment" data-timbre="beep">Beep</button>
+                <button class="segment" data-timbre="tap">Click Tap</button>
+            </div>
+        </div>
+
+        <div class="slider-group">
+            <div class="slider-header">
+                <div class="slider-name">Громкость</div>
+                <span class="number-input" style="cursor:default;" id="volumeValue">80%</span>
+            </div>
+            <div class="slider-row"><input type="range" class="slider" id="sliderVolume" min="0" max="100" value="80" step="1" /></div>
+        </div>
+
+        <div class="slider-group" style="margin-bottom: 0;">
+            <div class="slider-header">
+                <div class="slider-name">Голосовой отсчёт перед стартом<span class="desc"> — «1, 2, 3, 4» в темпе</span></div>
+                <label class="toggle">
+                    <input type="checkbox" id="countdownToggle" />
+                    <span class="track"></span>
+                </label>
+            </div>
+        </div>
+    </section>
+
+    <!-- Пресеты -->
+    <section class="glass panel">
+        <div class="panel-title">Пресеты</div>
+        <div class="presets-list" id="presetsList"></div>
+
+        <div class="preset-save-row">
+            <input type="text" id="presetName" placeholder="Название пресета (например, «Гаммы»)" maxlength="40" />
+            <button class="btn btn-primary btn-sm" id="savePresetBtn">Сохранить</button>
+        </div>
+    </section>
+
+    <footer>
+        Подсказка: <span class="key">Пробел</span> — старт/пауза. Все ваши пресеты хранятся локально в браузере.
+    </footer>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    // === Состояние ===
+    const state = {
+        running: false,
+        currentBpm: 60,
+        bpmA: 60,
+        stepB: 5,
+        durationC: 2, // мин
+        meter: 4, // 1 = без акцента
+        timbre: 'click',
+        volume: 0.8,
+        countdownEnabled: false,
+        partyStartTime: 0,
+        nextBeatTime: 0,
+        beatCount: 0, // глобальный счётчик ударов
+        timerId: null,
+        lookahead: 25,
+        scheduleAheadTime: 0.1,
+        audioCtx: null,
+        masterGain: null,
+        countdownActive: false,
+        countdownTimers: [],
+    };
+
+    const STORAGE_KEY = 'metronome_presets_v2';
+    const SETTINGS_KEY = 'metronome_settings_v2';
+
+    const BUILTIN_PRESETS = [
+        { id: 'builtin-1', name: 'Новичок 60→120', a: 60, b: 5, c: 2, meter: 4, timbre: 'click', volume: 0.8, builtin: true },
+        { id: 'builtin-2', name: 'Скорость 80→160', a: 80, b: 8, c: 1, meter: 4, timbre: 'woodblock', volume: 0.8, builtin: true },
+        { id: 'builtin-3', name: 'Разогрев 40→100', a: 40, b: 3, c: 3, meter: 3, timbre: 'tap', volume: 0.7, builtin: true },
+    ];
+
+    // === DOM ===
+    const $ = (id) => document.getElementById(id);
+    const els = {
+        bpmDisplay: $('bpmDisplay'),
+        nextBpm: $('nextBpm'),
+        timeLeft: $('timeLeft'),
+        progressFill: $('progressFill'),
+        progressPercent: $('progressPercent'),
+        pulseCore: $('pulseCore'),
+        ring1: $('ring1'), ring2: $('ring2'),
+        beatsIndicator: $('beatsIndicator'),
+        countdownOverlay: $('countdownOverlay'),
+        startBtn: $('startBtn'), stopBtn: $('stopBtn'), resetBtn: $('resetBtn'),
+        inputA: $('inputA'), inputB: $('inputB'), inputC: $('inputC'),
+        sliderA: $('sliderA'), sliderB: $('sliderB'), sliderC: $('sliderC'),
+        meterSegments: $('meterSegments'),
+        timbreSegments: $('timbreSegments'),
+        sliderVolume: $('sliderVolume'),
+        volumeValue: $('volumeValue'),
+        countdownToggle: $('countdownToggle'),
+        presetsList: $('presetsList'),
+        presetName: $('presetName'),
+        savePresetBtn: $('savePresetBtn'),
+    };
+
+    // === Утилиты ===
+    const clamp = (n, mn, mx) => Math.max(mn, Math.min(mx, n));
+    function formatTime(s) {
+        if (!isFinite(s) || s < 0) return '--:--';
+        const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+        return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    }
+    function updateSliderFill(sl) {
+        const min = +sl.min, max = +sl.max, val = +sl.value;
+        const pct = ((val - min) * 100) / (max - min);
+        sl.style.setProperty('--fill', pct + '%');
+    }
+
+    // === Парные ползунок + инпут ===
+    function syncPair(slider, input, onChange) {
+        const handler = (src) => {
+            let v = parseFloat(src.value);
+            if (isNaN(v)) v = parseFloat(slider.min);
+            v = clamp(v, +slider.min, +slider.max);
+            slider.value = v; input.value = v;
+            updateSliderFill(slider);
+            onChange(v);
+            saveSettings();
+        };
+        slider.addEventListener('input', () => handler(slider));
+        input.addEventListener('input', () => handler(input));
+        input.addEventListener('blur', () => handler(input));
+        updateSliderFill(slider);
+    }
+
+    syncPair(els.sliderA, els.inputA, (v) => {
+        state.bpmA = v;
+        if (!state.running) {
+            state.currentBpm = v;
+            els.bpmDisplay.textContent = v;
+            updateNextBpmDisplay();
+        }
+    });
+    syncPair(els.sliderB, els.inputB, (v) => { state.stepB = v; updateNextBpmDisplay(); });
+    syncPair(els.sliderC, els.inputC, (v) => {
+        state.durationC = v;
+        if (!state.running) els.timeLeft.textContent = formatTime(v * 60);
+    });
+
+    // Громкость
+    els.sliderVolume.addEventListener('input', () => {
+        state.volume = +els.sliderVolume.value / 100;
+        els.volumeValue.textContent = Math.round(state.volume * 100) + '%';
+        updateSliderFill(els.sliderVolume);
+        if (state.masterGain && state.audioCtx) {
+            state.masterGain.gain.linearRampToValueAtTime(state.volume, state.audioCtx.currentTime + 0.05);
+        }
+        saveSettings();
+    });
+    updateSliderFill(els.sliderVolume);
+
+    // Размер такта
+    els.meterSegments.addEventListener('click', (e) => {
+        const btn = e.target.closest('.segment');
+        if (!btn) return;
+        els.meterSegments.querySelectorAll('.segment').forEach(s => s.classList.remove('active'));
+        btn.classList.add('active');
+        state.meter = +btn.dataset.meter;
+        renderBeatsIndicator();
+        saveSettings();
+    });
+
+    // Тембр
+    els.timbreSegments.addEventListener('click', (e) => {
+        const btn = e.target.closest('.segment');
+        if (!btn) return;
+        els.timbreSegments.querySelectorAll('.segment').forEach(s => s.classList.remove('active'));
+        btn.classList.add('active');
+        state.timbre = btn.dataset.timbre;
+        // Превью звука
+        if (!state.running) playPreview();
+        saveSettings();
+    });
+
+    // Голосовой отсчёт
+    els.countdownToggle.addEventListener('change', () => {
+        state.countdownEnabled = els.countdownToggle.checked;
+        saveSettings();
+    });
+
+    function updateNextBpmDisplay() {
+        const next = clamp(state.currentBpm + state.stepB, 20, 300);
+        els.nextBpm.textContent = next > state.currentBpm ? next : '—';
+    }
+
+    // === Индикатор долей ===
+    function renderBeatsIndicator() {
+        els.beatsIndicator.innerHTML = '';
+        if (state.meter <= 1) return;
+        for (let i = 0; i < state.meter; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'beat-dot' + (i === 0 ? ' first' : '');
+            els.beatsIndicator.appendChild(dot);
+        }
+    }
+    function highlightBeat(beatInMeasure) {
+        const dots = els.beatsIndicator.querySelectorAll('.beat-dot');
+        dots.forEach((d, i) => d.classList.toggle('active', i === beatInMeasure));
+    }
+
+    // === Web Audio ===
+    function ensureAudio() {
+        if (!state.audioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            state.audioCtx = new Ctx();
+            state.masterGain = state.audioCtx.createGain();
+            state.masterGain.gain.value = state.volume;
+            state.masterGain.connect(state.audioCtx.destination);
+        }
+        if (state.audioCtx.state === 'suspended') state.audioCtx.resume();
+        return state.audioCtx;
+    }
+
+    // Тембры — разные синтез-рецепты
+    function scheduleSound(time, accent) {
+        const ctx = state.audioCtx;
+        const t = state.timbre;
+        if (t === 'click') return synthClick(ctx, time, accent);
+        if (t === 'woodblock') return synthWoodblock(ctx, time, accent);
+        if (t === 'beep') return synthBeep(ctx, time, accent);
+        if (t === 'tap') return synthTap(ctx, time, accent);
+        return synthClick(ctx, time, accent);
+    }
+
+    function synthClick(ctx, time, accent) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(accent ? 1700 : 1000, time);
+        osc.frequency.exponentialRampToValueAtTime(accent ? 900 : 500, time + 0.04);
+        gain.gain.setValueAtTime(0.0001, time);
+        gain.gain.exponentialRampToValueAtTime(accent ? 0.7 : 0.45, time + 0.002);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.07);
+        osc.connect(gain); gain.connect(state.masterGain);
+        osc.start(time); osc.stop(time + 0.1);
+    }
+
+    function synthWoodblock(ctx, time, accent) {
+        // Триангл + быстрый pitch-down + сильное затухание
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = accent ? 2200 : 1400;
+        filter.Q.value = 8;
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(accent ? 2400 : 1800, time);
+        osc.frequency.exponentialRampToValueAtTime(accent ? 600 : 400, time + 0.03);
+        gain.gain.setValueAtTime(0.0001, time);
+        gain.gain.exponentialRampToValueAtTime(accent ? 0.85 : 0.6, time + 0.001);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+        osc.connect(filter); filter.connect(gain); gain.connect(state.masterGain);
+        osc.start(time); osc.stop(time + 0.08);
+    }
+
+    function synthBeep(ctx, time, accent) {
+        // Чистый square — электронный «бип»
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(accent ? 1320 : 880, time);
+        gain.gain.setValueAtTime(0.0001, time);
+        gain.gain.exponentialRampToValueAtTime(accent ? 0.35 : 0.22, time + 0.005);
+        gain.gain.setValueAtTime(accent ? 0.35 : 0.22, time + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.08);
+        osc.connect(gain); gain.connect(state.masterGain);
+        osc.start(time); osc.stop(time + 0.1);
+    }
+
+    function synthTap(ctx, time, accent) {
+        // Шум через буфер + bandpass — мягкий «tap»
+        const dur = 0.05;
+        const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = accent ? 3000 : 2000;
+        filter.Q.value = 6;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, time);
+        gain.gain.exponentialRampToValueAtTime(accent ? 0.7 : 0.45, time + 0.002);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+        src.connect(filter); filter.connect(gain); gain.connect(state.masterGain);
+        src.start(time); src.stop(time + dur);
+    }
+
+    function playPreview() {
+        const ctx = ensureAudio();
+        scheduleSound(ctx.currentTime + 0.02, false);
+    }
+
+    // === Планировщик ===
+    function scheduler() {
+        if (!state.running) return;
+        const ctx = state.audioCtx;
+        while (state.nextBeatTime < ctx.currentTime + state.scheduleAheadTime) {
+            const beatInMeasure = state.meter > 1 ? (state.beatCount % state.meter) : -1;
+            const isAccent = state.meter > 1 && beatInMeasure === 0;
+            scheduleSound(state.nextBeatTime, isAccent);
+            scheduleVisualBeat(state.nextBeatTime, isAccent, beatInMeasure);
+            const sec = 60.0 / state.currentBpm;
+            state.nextBeatTime += sec;
+            state.beatCount++;
+        }
+    }
+
+    let beatQueue = [];
+    function scheduleVisualBeat(audioTime, accent, beatInMeasure) {
+        beatQueue.push({ time: audioTime, accent, beatInMeasure });
+    }
+
+    let ringToggle = 0;
+    function visualLoop() {
+        if (!state.audioCtx) { requestAnimationFrame(visualLoop); return; }
+        const now = state.audioCtx.currentTime;
+        while (beatQueue.length && beatQueue[0].time <= now) {
+            const b = beatQueue.shift();
+            triggerPulse(b.accent, b.beatInMeasure);
+        }
+        if (state.running) updateProgress();
+        requestAnimationFrame(visualLoop);
+    }
+
+    function triggerPulse(accent, beatInMeasure) {
+        els.pulseCore.classList.remove('beat', 'accent');
+        void els.pulseCore.offsetWidth;
+        els.pulseCore.classList.add('beat');
+        if (accent) els.pulseCore.classList.add('accent');
+        setTimeout(() => els.pulseCore.classList.remove('beat', 'accent'), 130);
+
+        const ring = ringToggle++ % 2 === 0 ? els.ring1 : els.ring2;
+        ring.classList.remove('animate', 'accent');
+        void ring.offsetWidth;
+        ring.classList.add('animate');
+        if (accent) ring.classList.add('accent');
+
+        if (beatInMeasure >= 0) highlightBeat(beatInMeasure);
+    }
+
+    // === Прогресс и переход партий ===
+    function updateProgress() {
+        const ctx = state.audioCtx;
+        const elapsed = ctx.currentTime - state.partyStartTime;
+        const total = state.durationC * 60;
+        const ratio = clamp(elapsed / total, 0, 1);
+        els.progressFill.style.width = (ratio * 100) + '%';
+        els.progressPercent.textContent = Math.floor(ratio * 100) + '%';
+        els.timeLeft.textContent = formatTime(total - elapsed);
+
+        if (elapsed >= total) {
+            const next = clamp(state.currentBpm + state.stepB, 20, 300);
+            state.currentBpm = next;
+            els.bpmDisplay.textContent = next;
+            state.partyStartTime = ctx.currentTime;
+            updateNextBpmDisplay();
+        }
+    }
+
+    // === Голосовой отсчёт ===
+    function speakWord(word) {
+        if (!('speechSynthesis' in window)) return;
+        try {
+            const u = new SpeechSynthesisUtterance(word);
+            u.lang = 'ru-RU';
+            u.rate = 1.05;
+            u.pitch = 1.0;
+            u.volume = state.volume;
+            // Постараемся выбрать русский голос
+            const voices = window.speechSynthesis.getVoices();
+            const ru = voices.find(v => /ru/i.test(v.lang));
+            if (ru) u.voice = ru;
+            window.speechSynthesis.speak(u);
+        } catch (e) { /* noop */ }
+    }
+
+    function runCountdown(thenStart) {
+        const words = ['раз', 'два', 'три', 'четыре'];
+        const beatMs = 60000 / state.currentBpm;
+        state.countdownActive = true;
+        // Прогрев голоса (Chrome иногда теряет первое слово)
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
+        const ctx = ensureAudio();
+
+        words.forEach((w, i) => {
+            const tAudio = ctx.currentTime + (i * beatMs) / 1000 + 0.05;
+            // Звук-тик во время отсчёта (для синхронизации с темпом)
+            scheduleSound(tAudio, i === 0);
+            // Визуальная цифра + произношение через setTimeout
+            const visualMs = i * beatMs + 50;
+            const t1 = setTimeout(() => {
+                els.countdownOverlay.textContent = i + 1;
+                els.countdownOverlay.classList.add('active');
+                speakWord(w);
+                triggerPulse(i === 0, state.meter > 1 ? (i % state.meter) : -1);
+            }, visualMs);
+            state.countdownTimers.push(t1);
+        });
+
+        const finishMs = words.length * beatMs + 80;
+        const tEnd = setTimeout(() => {
+            els.countdownOverlay.classList.remove('active');
+            state.countdownActive = false;
+            state.countdownTimers = [];
+            thenStart();
+        }, finishMs);
+        state.countdownTimers.push(tEnd);
+    }
+
+    function abortCountdown() {
+        state.countdownTimers.forEach(t => clearTimeout(t));
+        state.countdownTimers = [];
+        state.countdownActive = false;
+        els.countdownOverlay.classList.remove('active');
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    }
+
+    // === Управление ===
+    function startMetronome() {
+        const ctx = state.audioCtx;
+        state.beatCount = 0;
+        state.currentBpm = state.bpmA;
+        els.bpmDisplay.textContent = state.currentBpm;
+        state.partyStartTime = ctx.currentTime;
+        state.nextBeatTime = ctx.currentTime + 0.05;
+        state.running = true;
+        state.timerId = setInterval(scheduler, state.lookahead);
+        els.startBtn.textContent = 'Пауза';
+        els.stopBtn.classList.add('active');
+        updateNextBpmDisplay();
+    }
+
+    function start() {
+        if (state.running || state.countdownActive) return;
+        ensureAudio();
+        // Если пауза с продолжением — без отсчёта
+        if (state.beatCount > 0 || !state.countdownEnabled) {
+            // Возобновление после паузы
+            const ctx = state.audioCtx;
+            if (state.beatCount > 0) {
+                state.nextBeatTime = ctx.currentTime + 0.05;
+                state.partyStartTime = ctx.currentTime - (state.partyStartTime ? (ctx.currentTime - state.partyStartTime) : 0);
+                // Точнее: возобновим прогресс с того места, где остановились — для простоты сбросим партию
+                state.partyStartTime = ctx.currentTime;
+                state.running = true;
+                state.timerId = setInterval(scheduler, state.lookahead);
+                els.startBtn.textContent = 'Пауза';
+                els.stopBtn.classList.add('active');
+                updateNextBpmDisplay();
+            } else {
+                startMetronome();
+            }
+            return;
+        }
+        // С отсчётом
+        runCountdown(() => startMetronome());
+    }
+
+    function pause() {
+        if (state.countdownActive) abortCountdown();
+        if (!state.running) return;
+        state.running = false;
+        clearInterval(state.timerId);
+        state.timerId = null;
+        beatQueue = [];
+        els.startBtn.textContent = 'Старт';
+        els.stopBtn.classList.remove('active');
+    }
+
+    function reset() {
+        pause();
+        state.beatCount = 0;
+        state.currentBpm = state.bpmA;
+        els.bpmDisplay.textContent = state.bpmA;
+        els.progressFill.style.width = '0%';
+        els.progressPercent.textContent = '0%';
+        els.timeLeft.textContent = formatTime(state.durationC * 60);
+        beatQueue = [];
+        // Сброс индикатора
+        els.beatsIndicator.querySelectorAll('.beat-dot').forEach(d => d.classList.remove('active'));
+        updateNextBpmDisplay();
+    }
+
+    els.startBtn.addEventListener('click', () => { state.running ? pause() : start(); });
+    els.stopBtn.addEventListener('click', pause);
+    els.resetBtn.addEventListener('click', reset);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
+            e.preventDefault();
+            state.running ? pause() : start();
+        }
+    });
+
+    // === Пресеты ===
+    function loadUserPresets() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            return raw ? JSON.parse(raw) : [];
+        } catch { return []; }
+    }
+    function saveUserPresets(list) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    }
+    function renderPresets() {
+        els.presetsList.innerHTML = '';
+        const user = loadUserPresets();
+        const all = [...BUILTIN_PRESETS, ...user];
+
+        if (all.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'Пресетов пока нет — сохраните текущие настройки ниже.';
+            els.presetsList.appendChild(empty);
+            return;
+        }
+
+        all.forEach(p => {
+            const item = document.createElement('div');
+            item.className = 'preset-item' + (p.builtin ? ' preset-builtin' : '');
+            const meterTxt = p.meter > 1 ? `${p.meter}/4` : 'без акц.';
+            const timbreTxt = { click:'Click', woodblock:'Woodblock', beep:'Beep', tap:'Tap' }[p.timbre] || 'Click';
+            item.innerHTML = `
+                <div class="preset-info">
+                    <div class="preset-name">${escapeHtml(p.name)}</div>
+                    <div class="preset-meta">A=${p.a} · B=${p.b} · C=${p.c} мин · ${meterTxt} · ${timbreTxt}</div>
+                </div>
+                <div class="preset-actions"></div>
+            `;
+            const actions = item.querySelector('.preset-actions');
+            if (p.builtin) {
+                const tag = document.createElement('span');
+                tag.className = 'preset-btn builtin-tag';
+                tag.textContent = 'базовый';
+                actions.appendChild(tag);
+            }
+            const loadBtn = document.createElement('button');
+            loadBtn.className = 'preset-btn load';
+            loadBtn.textContent = 'Загрузить';
+            loadBtn.onclick = () => loadPreset(p);
+            actions.appendChild(loadBtn);
+
+            if (!p.builtin) {
+                const delBtn = document.createElement('button');
+                delBtn.className = 'preset-btn delete';
+                delBtn.textContent = '✕';
+                delBtn.title = 'Удалить';
+                delBtn.onclick = () => deletePreset(p.id);
+                actions.appendChild(delBtn);
+            }
+            els.presetsList.appendChild(item);
+        });
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function loadPreset(p) {
+        // Применяем все поля
+        els.sliderA.value = els.inputA.value = p.a;
+        els.sliderB.value = els.inputB.value = p.b;
+        els.sliderC.value = els.inputC.value = p.c;
+        state.bpmA = p.a; state.stepB = p.b; state.durationC = p.c;
+        updateSliderFill(els.sliderA);
+        updateSliderFill(els.sliderB);
+        updateSliderFill(els.sliderC);
+
+        state.meter = p.meter || 4;
+        els.meterSegments.querySelectorAll('.segment').forEach(s => {
+            s.classList.toggle('active', +s.dataset.meter === state.meter);
+        });
+        renderBeatsIndicator();
+
+        state.timbre = p.timbre || 'click';
+        els.timbreSegments.querySelectorAll('.segment').forEach(s => {
+            s.classList.toggle('active', s.dataset.timbre === state.timbre);
+        });
+
+        if (typeof p.volume === 'number') {
+            state.volume = p.volume;
+            els.sliderVolume.value = Math.round(p.volume * 100);
+            els.volumeValue.textContent = Math.round(p.volume * 100) + '%';
+            updateSliderFill(els.sliderVolume);
+            if (state.masterGain) state.masterGain.gain.value = state.volume;
+        }
+
+        reset();
+        saveSettings();
+    }
+
+    function deletePreset(id) {
+        if (!confirm('Удалить пресет?')) return;
+        const list = loadUserPresets().filter(p => p.id !== id);
+        saveUserPresets(list);
+        renderPresets();
+    }
+
+    els.savePresetBtn.addEventListener('click', () => {
+        const name = els.presetName.value.trim();
+        if (!name) { els.presetName.focus(); return; }
+        const list = loadUserPresets();
+        list.push({
+            id: 'u-' + Date.now(),
+            name, a: state.bpmA, b: state.stepB, c: state.durationC,
+            meter: state.meter, timbre: state.timbre, volume: state.volume,
+        });
+        saveUserPresets(list);
+        els.presetName.value = '';
+        renderPresets();
+    });
+    els.presetName.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') els.savePresetBtn.click();
+    });
+
+    // === Сохранение текущих настроек ===
+    function saveSettings() {
+        try {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+                a: state.bpmA, b: state.stepB, c: state.durationC,
+                meter: state.meter, timbre: state.timbre, volume: state.volume,
+                countdown: state.countdownEnabled,
+            }));
+        } catch {}
+    }
+    function loadSettings() {
+        try {
+            const raw = localStorage.getItem(SETTINGS_KEY);
+            if (!raw) return;
+            const s = JSON.parse(raw);
+            if (s.a) { state.bpmA = s.a; els.sliderA.value = els.inputA.value = s.a; updateSliderFill(els.sliderA); }
+            if (s.b) { state.stepB = s.b; els.sliderB.value = els.inputB.value = s.b; updateSliderFill(els.sliderB); }
+            if (s.c) { state.durationC = s.c; els.sliderC.value = els.inputC.value = s.c; updateSliderFill(els.sliderC); }
+            if (s.meter) {
+                state.meter = s.meter;
+                els.meterSegments.querySelectorAll('.segment').forEach(seg => {
+                    seg.classList.toggle('active', +seg.dataset.meter === state.meter);
+                });
+            }
+            if (s.timbre) {
+                state.timbre = s.timbre;
+                els.timbreSegments.querySelectorAll('.segment').forEach(seg => {
+                    seg.classList.toggle('active', seg.dataset.timbre === state.timbre);
+                });
+            }
+            if (typeof s.volume === 'number') {
+                state.volume = s.volume;
+                els.sliderVolume.value = Math.round(s.volume * 100);
+                els.volumeValue.textContent = Math.round(s.volume * 100) + '%';
+                updateSliderFill(els.sliderVolume);
+            }
+            if (typeof s.countdown === 'boolean') {
+                state.countdownEnabled = s.countdown;
+                els.countdownToggle.checked = s.countdown;
+            }
+        } catch {}
+    }
+
+    // === Инициализация ===
+    loadSettings();
+    state.currentBpm = state.bpmA;
+    els.bpmDisplay.textContent = state.bpmA;
+    els.timeLeft.textContent = formatTime(state.durationC * 60);
+    updateNextBpmDisplay();
+    renderBeatsIndicator();
+    renderPresets();
+    requestAnimationFrame(visualLoop);
+
+    // Прогрев голосов (Chrome загружает асинхронно)
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.getVoices();
+        window.speechSynthesis.addEventListener?.('voiceschanged', () => window.speechSynthesis.getVoices());
+    }
+})();
+</script>
+</body>
+</html>
