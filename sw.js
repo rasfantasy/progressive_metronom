@@ -2,7 +2,7 @@
 // Стратегия: cache-first для статики + сетевой фолбэк
 // При обновлении версии CACHE_NAME старый кэш будет удалён
 
-const CACHE_NAME = 'metronome-v1.0.0';
+const CACHE_NAME = 'metronome-v1.0.1';
 const ASSETS = [
   './',
   './index.html',

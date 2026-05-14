@@ -702,7 +702,15 @@
             state.audioCtx = new Ctx();
             state.masterGain = state.audioCtx.createGain();
             state.masterGain.gain.value = state.volume;
-            state.masterGain.connect(state.audioCtx.destination);
+            // Мягкий компрессор — спасает от клиппинга на высокой громкости
+            const compressor = state.audioCtx.createDynamicsCompressor();
+            compressor.threshold.value = -6;
+            compressor.knee.value = 12;
+            compressor.ratio.value = 4;
+            compressor.attack.value = 0.003;
+            compressor.release.value = 0.1;
+            state.masterGain.connect(compressor);
+            compressor.connect(state.audioCtx.destination);
         }
         if (state.audioCtx.state === 'suspended') state.audioCtx.resume();
         return state.audioCtx;
@@ -726,8 +734,8 @@
         osc.frequency.setValueAtTime(accent ? 1700 : 1000, time);
         osc.frequency.exponentialRampToValueAtTime(accent ? 900 : 500, time + 0.04);
         gain.gain.setValueAtTime(0.0001, time);
-        gain.gain.exponentialRampToValueAtTime(accent ? 0.7 : 0.45, time + 0.002);
-        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.07);
+        gain.gain.exponentialRampToValueAtTime(accent ? 1.5 : 1.1, time + 0.002);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.09);
         osc.connect(gain); gain.connect(state.masterGain);
         osc.start(time); osc.stop(time + 0.1);
     }
@@ -744,8 +752,8 @@
         osc.frequency.setValueAtTime(accent ? 2400 : 1800, time);
         osc.frequency.exponentialRampToValueAtTime(accent ? 600 : 400, time + 0.03);
         gain.gain.setValueAtTime(0.0001, time);
-        gain.gain.exponentialRampToValueAtTime(accent ? 0.85 : 0.6, time + 0.001);
-        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+        gain.gain.exponentialRampToValueAtTime(accent ? 1.8 : 1.4, time + 0.001);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.07);
         osc.connect(filter); filter.connect(gain); gain.connect(state.masterGain);
         osc.start(time); osc.stop(time + 0.08);
     }
@@ -757,16 +765,16 @@
         osc.type = 'square';
         osc.frequency.setValueAtTime(accent ? 1320 : 880, time);
         gain.gain.setValueAtTime(0.0001, time);
-        gain.gain.exponentialRampToValueAtTime(accent ? 0.35 : 0.22, time + 0.005);
-        gain.gain.setValueAtTime(accent ? 0.35 : 0.22, time + 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.08);
+        gain.gain.exponentialRampToValueAtTime(accent ? 0.85 : 0.6, time + 0.005);
+        gain.gain.setValueAtTime(accent ? 0.85 : 0.6, time + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.1);
         osc.connect(gain); gain.connect(state.masterGain);
         osc.start(time); osc.stop(time + 0.1);
     }
 
     function synthTap(ctx, time, accent) {
         // Шум через буфер + bandpass — мягкий «tap»
-        const dur = 0.05;
+        const dur = 0.07;
         const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
         const data = buf.getChannelData(0);
         for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
@@ -778,8 +786,8 @@
         filter.Q.value = 6;
         const gain = ctx.createGain();
         gain.gain.setValueAtTime(0.0001, time);
-        gain.gain.exponentialRampToValueAtTime(accent ? 0.7 : 0.45, time + 0.002);
-        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+        gain.gain.exponentialRampToValueAtTime(accent ? 1.5 : 1.1, time + 0.002);
+        gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.07);
         src.connect(filter); filter.connect(gain); gain.connect(state.masterGain);
         src.start(time); src.stop(time + dur);
     }
